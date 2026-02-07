@@ -13,20 +13,36 @@ interface WeatherData {
 export function WeatherWidget() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Default to Palm Springs/Indio area for wedding forecasts
-    const defaultWeather = {
-      temp: 72,
-      condition: 'Sunny',
-      humidity: 25,
-      wind: 8,
-      location: 'Indio, CA',
+    const fetchWeather = async () => {
+      try {
+        const response = await fetch('/api/weather/current')
+        if (response.ok) {
+          const data = await response.json()
+          setWeather(data)
+          setError(null)
+        } else {
+          throw new Error('Failed to fetch')
+        }
+      } catch (err) {
+        console.error('Weather fetch error:', err)
+        setError('Unable to load')
+        // Fallback
+        setWeather({
+          temp: 72,
+          condition: 'Sunny',
+          humidity: 25,
+          wind: 8,
+          location: 'Indio, CA',
+        })
+      } finally {
+        setLoading(false)
+      }
     }
 
-    // Try to get from API, fall back to default
-    setWeather(defaultWeather)
-    setLoading(false)
+    fetchWeather()
   }, [])
 
   if (loading) {
