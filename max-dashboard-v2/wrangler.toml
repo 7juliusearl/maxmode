@@ -4,3 +4,4 @@ pages_build_output_dir = "out"
 
 [vars]
 TELEGRAM_CHAT_ID = "-1003718000012"
+TELEGRAM_BOT_TOKEN = "8521022258:AAFJ6kvJO7LpB9CzQ76YW29Mqas2yJ68mIc"
