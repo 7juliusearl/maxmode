@@ -4,3 +4,8 @@ pages_build_output_dir = "out"
 
 [vars]
 TELEGRAM_CHAT_ID = "8199918956"
+
+[[kv_namespaces]]
+binding = "TASKS"
+id = "beea8df660364b4ba767427078af2039"
+preview_id = "6bd30bb98e1947819f537c2fedf0e0e5"

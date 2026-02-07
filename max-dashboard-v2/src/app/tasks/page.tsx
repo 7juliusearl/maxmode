@@ -35,14 +35,12 @@ const ASSIGNEES = [
 
 const TELEGRAM_CHAT_ID = '8199918956' // Julius's DM
 
-const TASK_CHANGED = 'maxmode-task-changed'
-
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([
     { 
       role: 'assistant', 
-      content: 'Hi! I\'m Max. When you assign tasks to me, I\'ll: \n\n1️⃣ Review the task\n2️⃣ Ask clarifying questions if needed\n3️⃣ Wait for your confirmation\n4️⃣ Get to work!\n\nTry assigning a task to me! You can also manage tasks directly from Telegram.'
+      content: 'Hi! I\'m Max. When you assign tasks to me, I\'ll: \n\n1️⃣ Review the task\n2️⃣ Ask clarifying questions if needed\n3️⃣ Wait for your confirmation\n4️⃣ Get to work!\n\nTry assigning a task to me! Tasks sync across all your devices.'
     }
   ])
   const [input, setInput] = useState('')
@@ -50,99 +48,56 @@ export default function TasksPage() {
   const [showChat, setShowChat] = useState(true)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [telegramConnected, setTelegramConnected] = useState(false)
+  const [kvConnected, setKvConnected] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Fetch tasks from KV on load
   useEffect(() => {
-    const saved = localStorage.getItem('maxmode-tasks-kanban')
-    if (saved) {
-      setTasks(JSON.parse(saved))
-    }
-    
-    // Check Telegram connection
-    checkTelegramConnection()
+    fetchTasks()
   }, [])
 
-  // Poll for Telegram updates every 5 seconds
-  useEffect(() => {
-    pollIntervalRef.current = setInterval(async () => {
-      const pendingMaxTasks = tasks.filter(t => t.assignee === 'max' && (t.status === 'pending' || t.status === 'inprogress'))
+  const fetchTasks = async () => {
+    try {
+      const response = await fetch('/api/tasks/get')
+      const data = await response.json()
       
-      if (pendingMaxTasks.length > 0) {
-        await checkTelegramUpdates(pendingMaxTasks)
-      }
-    }, 5000)
-    
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-      }
-    }
-  }, [tasks])
-
-  const checkTelegramConnection = async () => {
-    try {
-      const response = await fetch('/api/telegram/poll')
-      if (response.ok) {
-        setTelegramConnected(true)
-      }
-    } catch {
-      setTelegramConnected(false)
-    }
-  }
-
-  const checkTelegramUpdates = async (maxTasks: Task[]) => {
-    try {
-      // In a real implementation, this would check the KV store
-      // For now, we'll rely on localStorage sync
-      const saved = localStorage.getItem('maxmode-tasks-telegram')
-      if (saved) {
-        const updates = JSON.parse(saved)
-        const now = Date.now()
-        const recent = updates.filter((u: any) => now - u.timestamp < 10000)
-        
-        for (const update of recent) {
-          if (update.action === 'start') {
-            // Move task to inprogress
-            setTasks(prev => prev.map(t => 
-              t.id === update.taskId ? { ...t, status: 'inprogress' } : t
-            ))
-          } else if (update.action === 'done') {
-            // Move task to done
-            setTasks(prev => prev.map(t => 
-              t.id === update.taskId ? { ...t, status: 'done' } : t
-            ))
-          }
-        }
+      if (data.success && data.tasks) {
+        setTasks(data.tasks)
+        setKvConnected(true)
       }
     } catch (error) {
-      console.error('Poll error:', error)
-    }
-  }
-
-  const broadcastChange = () => {
-    window.dispatchEvent(new Event(TASK_CHANGED))
-  }
-
-  useEffect(() => {
-    const handleStorage = () => {
+      console.error('Failed to fetch tasks:', error)
+      // Fallback to localStorage
       const saved = localStorage.getItem('maxmode-tasks-kanban')
       if (saved) {
         setTasks(JSON.parse(saved))
+        setKvConnected(false)
       }
     }
-    window.addEventListener('storage', handleStorage)
-    window.addEventListener(TASK_CHANGED, handleStorage)
-    return () => {
-      window.removeEventListener('storage', handleStorage)
-      window.removeEventListener(TASK_CHANGED, handleStorage)
-    }
-  }, [])
+  }
 
-  const saveTasks = (newTasks: Task[]) => {
+  // Save tasks to KV
+  const saveTasks = async (newTasks: Task[]) => {
     setTasks(newTasks)
+    
+    // Save to KV
+    try {
+      await fetch('/api/tasks/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: newTasks })
+      })
+      setKvConnected(true)
+    } catch (error) {
+      console.error('Failed to save to KV:', error)
+    }
+    
+    // Also save to localStorage as backup
     localStorage.setItem('maxmode-tasks-kanban', JSON.stringify(newTasks))
-    broadcastChange()
+    
+    // Broadcast change
+    window.dispatchEvent(new Event('maxmode-task-changed'))
   }
 
   // Send Telegram notification
@@ -159,7 +114,7 @@ export default function TasksPage() {
         body: JSON.stringify({
           chatId: TELEGRAM_CHAT_ID,
           text: text,
-          tasks: [task] // For inline buttons
+          tasks: [task]
         })
       })
       
@@ -261,7 +216,6 @@ export default function TasksPage() {
     const newTasks = [task, ...tasks]
     saveTasks(newTasks)
     
-    // Send Telegram notification if assigned to Max
     if (task.assignee === 'max') {
       sendTelegramNotification(task)
     }
@@ -280,32 +234,34 @@ export default function TasksPage() {
 
     await new Promise(resolve => setTimeout(resolve, 600))
 
-    // Check if this is a Max task interaction
     const pendingMaxTask = tasks.find(t => t.assignee === 'max' && t.status === 'pending')
     
     if (pendingMaxTask) {
       const lower = userMessage.toLowerCase()
       
       if (lower.includes('go') || lower.includes('yes') || lower.includes('do it') || lower.includes('proceed') || lower.includes('confirmed')) {
-        saveTasks(tasks.map(t => 
-          t.id === pendingMaxTask.id ? { ...t, status: 'todo' } : t
-        ))
+        const updatedTasks = tasks.map(t => 
+          t.id === pendingMaxTask.id ? { ...t, status: 'todo' as const } : t
+        )
+        saveTasks(updatedTasks)
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: '👍 Got it! Starting work on this task now. I\'ll let you know when it\'s done.',
+          content: '👍 Got it! Starting work on this task now.',
           taskId: pendingMaxTask.id
         }])
         setActiveTaskId(pendingMaxTask.id)
       } else if (lower.includes('cancel') || lower.includes('nevermind') || lower.includes('dont') || lower.includes('stop')) {
-        saveTasks(tasks.filter(t => t.id !== pendingMaxTask.id))
+        const updatedTasks = tasks.filter(t => t.id !== pendingMaxTask.id)
+        saveTasks(updatedTasks)
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: 'No problem! Task cancelled.'
         }])
       } else {
-        saveTasks(tasks.map(t => 
+        const updatedTasks = tasks.map(t => 
           t.id === pendingMaxTask.id ? { ...t, maxNotes: (t.maxNotes || '') + '\n' + userMessage } : t
-        ))
+        )
+        saveTasks(updatedTasks)
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: 'Got it. Before I start, I have a question: What would you like me to do with this task? Say "go" to proceed or "cancel" to skip.',
@@ -321,13 +277,13 @@ export default function TasksPage() {
         if (newTask.assignee === 'max') {
           setMessages(prev => [...prev, {
             role: 'assistant',
-            content: `📋 I've noted the task: "${newTask.text}"\n\n${newTask.priority === 'high' ? '⚡ Priority: High\n' : ''}${newTask.dueDate ? `📅 Due: ${newTask.dueDate}\n` : ''}Category: ${newTask.category}\n\n📱 I've sent this task to your Telegram! Click the button there to start working.`,
+            content: `📋 I've noted the task: "${newTask.text}"\n\n📱 I've sent this to your Telegram! Check your DM.`,
             task: newTask
           }])
         } else {
           setMessages(prev => [...prev, {
             role: 'assistant',
-            content: `Created task for Julius: "${newTask.text}"`,
+            content: `Created task: "${newTask.text}"`,
             task: newTask
           }])
         }
@@ -343,9 +299,10 @@ export default function TasksPage() {
   }
 
   const markComplete = (taskId: string) => {
-    saveTasks(tasks.map(t => 
-      t.id === taskId ? { ...t, status: 'done' } : t
-    ))
+    const updatedTasks = tasks.map(t => 
+      t.id === taskId ? { ...t, status: 'done' as const } : t
+    )
+    saveTasks(updatedTasks)
     setMessages(prev => [...prev, {
       role: 'assistant',
       content: '✅ Task completed!'
@@ -356,11 +313,13 @@ export default function TasksPage() {
   const getColumnTasks = (status: string) => tasks.filter(t => t.status === status)
 
   const moveTask = (id: string, newStatus: Task['status']) => {
-    saveTasks(tasks.map(t => t.id === id ? { ...t, status: newStatus } : t))
+    const updatedTasks = tasks.map(t => t.id === id ? { ...t, status: newStatus } : t)
+    saveTasks(updatedTasks)
   }
 
   const deleteTask = (id: string) => {
-    saveTasks(tasks.filter(t => t.id !== id))
+    const updatedTasks = tasks.filter(t => t.id !== id)
+    saveTasks(updatedTasks)
   }
 
   const getPriorityColor = (p: string) => {
@@ -392,14 +351,14 @@ export default function TasksPage() {
       <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">Tasks</h1>
-          <p className="text-[#9a9a9e]">AI Assistant + Telegram Sync</p>
+          <p className="text-[#9a9a9e]">AI Assistant + Cloud Sync</p>
         </div>
         <div className="flex items-center gap-3">
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs ${
-            telegramConnected ? 'bg-[#40c057]/20 text-[#40c057]' : 'bg-[#fa5252]/20 text-[#fa5252]'
+            kvConnected ? 'bg-[#40c057]/20 text-[#40c057]' : 'bg-[#fab005]/20 text-[#fab005]'
           }`}>
-            <span className={`w-2 h-2 rounded-full ${telegramConnected ? 'bg-[#40c057]' : 'bg-[#fa5252]'}`}></span>
-            Telegram {telegramConnected ? 'Connected' : 'Offline'}
+            <span className={`w-2 h-2 rounded-full ${kvConnected ? 'bg-[#40c057]' : 'bg-[#fab005]'}`}></span>
+            {kvConnected ? '☁️ Synced' : '📱 Local only'}
           </div>
           <button
             onClick={() => setShowChat(!showChat)}
@@ -427,10 +386,7 @@ export default function TasksPage() {
                         <p className="text-xs opacity-70">Assigned to Max</p>
                         <p className="font-medium">{msg.task.text}</p>
                         {msg.task.status === 'pending' && (
-                          <p className="text-xs text-[#fab005] mt-1">⏳ Awaiting confirmation (check Telegram!)</p>
-                        )}
-                        {msg.task.status === 'inprogress' && (
-                          <p className="text-xs text-[#5c7cfa] mt-1">🔄 In progress...</p>
+                          <p className="text-xs text-[#fab005] mt-1">⏳ Check Telegram to start</p>
                         )}
                       </div>
                     )}
@@ -489,7 +445,6 @@ export default function TasksPage() {
               ))}
             </div>
 
-            {/* Pending Max Tasks */}
             {pendingMaxTasks.length > 0 && (
               <div className="card p-4">
                 <h3 className="text-sm font-medium text-[#fab005] mb-3">🤖 Max&apos;s Awaiting Tasks</h3>
@@ -508,7 +463,6 @@ export default function TasksPage() {
               </div>
             )}
 
-            {/* In Progress Max Tasks */}
             {inprogressMaxTasks.length > 0 && (
               <div className="card p-4">
                 <h3 className="text-sm font-medium text-[#5c7cfa] mb-3">🔄 Max Working On</h3>
@@ -563,33 +517,25 @@ export default function TasksPage() {
                       {task.dueDate && <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{formatDate(task.dueDate)}</span>}
                     </div>
                     <div className="flex items-center justify-between">
-                      <div className="flex gap-2">
-                        {task.assignee === 'max' && column.id === 'todo' && (
-                          <>
-                            <button 
-                              onClick={() => moveTask(task.id, 'inprogress')} 
-                              className="text-xs px-3 py-1 rounded bg-[#5c7cfa]/20 text-[#5c7cfa] hover:bg-[#5c7cfa]/30 transition-colors"
-                            >
-                              ▶️ Start
-                            </button>
-                            <button 
-                              onClick={() => sendTelegramNotification(task)} 
-                              className="text-xs px-3 py-1 rounded bg-[#fab005]/20 text-[#fab005] hover:bg-[#fab005]/30 transition-colors"
-                              title="Send notification to Max"
-                            >
-                              🔔 Notify
-                            </button>
-                          </>
-                        )}
-                        {task.assignee === 'max' && column.id === 'inprogress' && (
-                          <button 
-                            onClick={() => moveTask(task.id, 'done')} 
-                            className="text-xs px-3 py-1 rounded bg-[#40c057]/20 text-[#40c057] hover:bg-[#40c057]/30 transition-colors"
-                          >
-                            ✅ Done
-                          </button>
-                        )}
-                      </div>
+                      {task.assignee === 'max' && column.id === 'todo' && (
+                        <button 
+                          onClick={() => moveTask(task.id, 'inprogress')} 
+                          className="text-xs px-3 py-1 rounded bg-[#5c7cfa]/20 text-[#5c7cfa] hover:bg-[#5c7cfa]/30 transition-colors"
+                        >
+                          ▶️ Start
+                        </button>
+                      )}
+                      {task.assignee === 'max' && column.id === 'inprogress' && (
+                        <button 
+                          onClick={() => moveTask(task.id, 'done')} 
+                          className="text-xs px-3 py-1 rounded bg-[#40c057]/20 text-[#40c057] hover:bg-[#40c057]/30 transition-colors"
+                        >
+                          ✅ Done
+                        </button>
+                      )}
+                      {(task.assignee === 'julius' || (column.id !== 'todo' && column.id !== 'inprogress')) && (
+                        <div></div>
+                      )}
                       <button onClick={() => deleteTask(task.id)} className="p-1 text-[#9a9a9e] hover:text-[#fa5252]">×</button>
                     </div>
                   </div>
