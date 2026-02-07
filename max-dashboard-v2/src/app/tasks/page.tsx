@@ -5,17 +5,27 @@ import { useState, useEffect } from 'react'
 interface Task {
   id: string
   text: string
-  completed: boolean
+  status: 'todo' | 'inprogress' | 'done'
+  assignee: 'julius' | 'max' | null
   category: string
   priority: 'high' | 'medium' | 'low'
   dueDate: string | null
   createdAt: string
 }
 
+const COLUMNS = [
+  { id: 'todo', label: 'To Do', color: 'border-[#fab005]' },
+  { id: 'inprogress', label: 'In Progress', color: 'border-[#5c7cfa]' },
+  { id: 'done', label: 'Done', color: 'border-[#40c057]' },
+] as const
+
 const CATEGORIES = ['General', 'Wedding', 'Business', 'Personal', 'Marketing']
 const PRIORITIES = ['high', 'medium', 'low'] as const
+const ASSIGNEES = [
+  { id: 'julius', label: 'Julius', emoji: '👤' },
+  { id: 'max', label: 'Max', emoji: '🤖' },
+] as const
 
-// Event names for cross-tab sync
 const TASK_CHANGED = 'maxmode-task-changed'
 
 export default function TasksPage() {
@@ -23,26 +33,24 @@ export default function TasksPage() {
   const [newTask, setNewTask] = useState('')
   const [category, setCategory] = useState('General')
   const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium')
+  const [assignee, setAssignee] = useState<'julius' | 'max' | null>(null)
   const [dueDate, setDueDate] = useState('')
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
   const [showAddForm, setShowAddForm] = useState(false)
 
   useEffect(() => {
-    const saved = localStorage.getItem('maxmode-tasks')
+    const saved = localStorage.getItem('maxmode-tasks-kanban')
     if (saved) {
       setTasks(JSON.parse(saved))
     }
   }, [])
 
-  // Broadcast task changes to other tabs
   const broadcastChange = () => {
     window.dispatchEvent(new Event(TASK_CHANGED))
   }
 
-  // Listen for changes from other tabs
   useEffect(() => {
     const handleStorage = () => {
-      const saved = localStorage.getItem('maxmode-tasks')
+      const saved = localStorage.getItem('maxmode-tasks-kanban')
       if (saved) {
         setTasks(JSON.parse(saved))
       }
@@ -59,7 +67,7 @@ export default function TasksPage() {
 
   const saveTasks = (newTasks: Task[]) => {
     setTasks(newTasks)
-    localStorage.setItem('maxmode-tasks', JSON.stringify(newTasks))
+    localStorage.setItem('maxmode-tasks-kanban', JSON.stringify(newTasks))
     broadcastChange()
   }
 
@@ -70,7 +78,8 @@ export default function TasksPage() {
     const task: Task = {
       id: Date.now().toString(),
       text: newTask.trim(),
-      completed: false,
+      status: 'todo',
+      assignee,
       category,
       priority,
       dueDate: dueDate || null,
@@ -79,14 +88,13 @@ export default function TasksPage() {
 
     saveTasks([task, ...tasks])
     setNewTask('')
+    setAssignee(null)
     setDueDate('')
     setShowAddForm(false)
   }
 
-  const toggleTask = (id: string) => {
-    saveTasks(tasks.map(t => 
-      t.id === id ? { ...t, completed: !t.completed } : t
-    ))
+  const moveTask = (id: string, newStatus: Task['status']) => {
+    saveTasks(tasks.map(t => t.id === id ? { ...t, status: newStatus } : t))
   }
 
   const deleteTask = (id: string) => {
@@ -95,10 +103,10 @@ export default function TasksPage() {
 
   const getPriorityColor = (p: string) => {
     switch (p) {
-      case 'high': return 'bg-[#fa5252]/20 text-[#fa5252]'
-      case 'medium': return 'bg-[#fab005]/20 text-[#fab005]'
-      case 'low': return 'bg-[#40c057]/20 text-[#40c057]'
-      default: return 'bg-[#2a2a2e] text-[#9a9a9e]'
+      case 'high': return 'bg-[#fa5252]/20 text-[#fa5252] border-[#fa5252]'
+      case 'medium': return 'bg-[#fab005]/20 text-[#fab005] border-[#fab005]'
+      case 'low': return 'bg-[#40c057]/20 text-[#40c057] border-[#40c057]'
+      default: return 'bg-[#2a2a2e] text-[#9a9a9e] border-[#2a2a2e]'
     }
   }
 
@@ -114,52 +122,40 @@ export default function TasksPage() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
-  const filteredTasks = tasks.filter(t => {
-    if (filter === 'pending') return !t.completed
-    if (filter === 'completed') return t.completed
-    return true
-  })
-
-  const pendingCount = tasks.filter(t => !t.completed).length
-  const completedCount = tasks.filter(t => t.completed).length
+  const getColumnTasks = (status: string) => tasks.filter(t => t.status === status)
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-          Tasks
-        </h1>
-        <p className="text-[#9a9a9e]">Manage your to-dos</p>
+      <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">
+            Tasks
+          </h1>
+          <p className="text-[#9a9a9e]">Kanban Board</p>
+        </div>
+        <div className="flex items-center gap-4">
+          {/* Assignee legend */}
+          <div className="flex items-center gap-2">
+            {ASSIGNEES.map(a => (
+              <div key={a.id} className="flex items-center gap-1 text-xs text-[#9a9a9e]">
+                <span>{a.emoji}</span>
+                <span>{a.label}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              showAddForm 
+                ? 'bg-[#2a2a2e] text-[#9a9a9e]' 
+                : 'bg-[#5c7cfa] hover:bg-[#4c6ef5] text-white'
+            }`}
+          >
+            {showAddForm ? 'Cancel' : '+ Add Task'}
+          </button>
+        </div>
       </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-white">{tasks.length}</p>
-          <p className="text-xs text-[#9a9a9e]">Total</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-[#fab005]">{pendingCount}</p>
-          <p className="text-xs text-[#9a9a9e]">Pending</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-[#40c057]">{completedCount}</p>
-          <p className="text-xs text-[#9a9a9e]">Done</p>
-        </div>
-      </div>
-
-      {/* Add Task Button */}
-      <button
-        onClick={() => setShowAddForm(!showAddForm)}
-        className={`w-full mb-6 py-3 rounded-lg font-medium transition-colors ${
-          showAddForm 
-            ? 'bg-[#2a2a2e] text-[#9a9a9e]' 
-            : 'bg-[#5c7cfa] hover:bg-[#4c6ef5] text-white'
-        }`}
-      >
-        {showAddForm ? 'Cancel' : '+ Add Task'}
-      </button>
 
       {/* Add Task Form */}
       {showAddForm && (
@@ -173,7 +169,29 @@ export default function TasksPage() {
             autoFocus
           />
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {/* Assignee */}
+            <div>
+              <label className="block text-xs text-[#9a9a9e] mb-1">Assign to</label>
+              <div className="flex gap-1">
+                {ASSIGNEES.map(a => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setAssignee(a.id as 'julius' | 'max')}
+                    className={`flex-1 py-2 rounded text-xs font-medium capitalize transition-colors flex items-center justify-center gap-1 ${
+                      assignee === a.id 
+                        ? 'bg-[#5c7cfa] text-white' 
+                        : 'bg-[#0d0d0f] text-[#9a9a9e] hover:bg-[#2a2a2e]'
+                    }`}
+                  >
+                    <span>{a.emoji}</span>
+                    <span>{a.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            
             {/* Category */}
             <div>
               <label className="block text-xs text-[#9a9a9e] mb-1">Category</label>
@@ -230,92 +248,111 @@ export default function TasksPage() {
         </form>
       )}
 
-      {/* Filter */}
-      <div className="flex gap-2 mb-4">
-        {(['all', 'pending', 'completed'] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === f 
-                ? 'bg-[#5c7cfa] text-white' 
-                : 'bg-[#161618] text-[#9a9a9e] hover:bg-[#2a2a2e]'
-            }`}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {/* Tasks List */}
-      <div className="space-y-2">
-        {filteredTasks.length === 0 ? (
-          <div className="card p-8 text-center">
-            <p className="text-[#9a9a9e]">
-              {filter === 'all' ? 'No tasks yet' : 
-               filter === 'pending' ? 'No pending tasks' : 
-               'No completed tasks'}
-            </p>
-          </div>
-        ) : (
-          filteredTasks.map((task) => (
-            <div
-              key={task.id}
-              className={`card p-4 flex items-start gap-3 transition-colors ${
-                task.completed ? 'opacity-50' : 'hover:bg-[#1a1a1c]'
-              }`}
-            >
-              <button
-                onClick={() => toggleTask(task.id)}
-                className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors shrink-0 ${
-                  task.completed 
-                    ? 'bg-[#40c057] border-[#40c057]' 
-                    : 'border-[#2a2a2e] hover:border-[#5c7cfa]'
-                }`}
-              >
-                {task.completed && (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                )}
-              </button>
-              
-              <div className="flex-1 min-w-0">
-                <p className={`text-white ${task.completed ? 'line-through text-[#9a9a9e]' : ''}`}>
-                  {task.text}
-                </p>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {/* Category tag */}
-                  <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e] text-[#9a9a9e]">
-                    {task.category}
-                  </span>
-                  
-                  {/* Priority tag */}
-                  <span className={`text-xs px-2 py-0.5 rounded ${getPriorityColor(task.priority)}`}>
-                    {task.priority}
-                  </span>
-                  
-                  {/* Due date */}
-                  {task.dueDate && (
-                    <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e] text-[#9a9a9e]">
-                      {formatDate(task.dueDate)}
-                    </span>
-                  )}
-                </div>
+      {/* Kanban Board */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {COLUMNS.map(column => (
+          <div key={column.id} className="flex flex-col">
+            {/* Column Header */}
+            <div className={`bg-[#161618] rounded-t-lg px-4 py-3 border-t-2 ${column.color}`}>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-white">{column.label}</span>
+                <span className="text-xs text-[#9a9a9e] bg-[#0d0d0f] px-2 py-0.5 rounded-full">
+                  {getColumnTasks(column.id).length}
+                </span>
               </div>
-              
-              <button
-                onClick={() => deleteTask(task.id)}
-                className="p-2 text-[#9a9a9e] hover:text-[#fa5252] transition-colors shrink-0"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                </svg>
-              </button>
             </div>
-          ))
-        )}
+            
+            {/* Column Body */}
+            <div className="bg-[#161618]/50 rounded-b-lg p-2 flex-1 min-h-[200px] space-y-2">
+              {getColumnTasks(column.id).map(task => (
+                <div
+                  key={task.id}
+                  className="card p-3 hover:border-[#2a2a2e] transition-colors cursor-pointer"
+                  onClick={() => {
+                    const nextStatus = column.id === 'todo' ? 'inprogress' : column.id === 'inprogress' ? 'done' : 'todo'
+                    if (column.id !== 'done') {
+                      moveTask(task.id, nextStatus)
+                    }
+                  }}
+                >
+                  <p className="text-white mb-2">{task.text}</p>
+                  
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {/* Assignee */}
+                    {task.assignee && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e] text-[#9a9a9e]">
+                        {ASSIGNEES.find(a => a.id === task.assignee)?.emoji} {ASSIGNEES.find(a => a.id === task.assignee)?.label}
+                      </span>
+                    )}
+                    
+                    {/* Category */}
+                    <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e] text-[#9a9a9e]">
+                      {task.category}
+                    </span>
+                    
+                    {/* Priority */}
+                    <span className={`text-xs px-2 py-0.5 rounded border ${getPriorityColor(task.priority)}`}>
+                      {task.priority}
+                    </span>
+                    
+                    {/* Due Date */}
+                    {task.dueDate && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e] text-[#9a9a9e]">
+                        {formatDate(task.dueDate)}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    {/* Move arrows */}
+                    <div className="flex gap-1">
+                      {column.id !== 'todo' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const prevStatus = column.id === 'done' ? 'inprogress' : 'todo'
+                            moveTask(task.id, prevStatus)
+                          }}
+                          className="p-1 text-[#9a9a9e] hover:text-white"
+                        >
+                          ←
+                        </button>
+                      )}
+                      {column.id !== 'done' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const nextStatus = column.id === 'todo' ? 'inprogress' : 'done'
+                            moveTask(task.id, nextStatus)
+                          }}
+                          className="p-1 text-[#9a9a9e] hover:text-white"
+                        >
+                          →
+                        </button>
+                      )}
+                    </div>
+                    
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteTask(task.id)
+                      }}
+                      className="p-1 text-[#9a9a9e] hover:text-[#fa5252]"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))}
+              
+              {getColumnTasks(column.id).length === 0 && (
+                <div className="text-center py-8 text-[#9a9a9e] text-sm">
+                  No tasks
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
