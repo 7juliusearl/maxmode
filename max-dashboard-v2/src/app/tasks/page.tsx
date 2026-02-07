@@ -563,25 +563,33 @@ export default function TasksPage() {
                       {task.dueDate && <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{formatDate(task.dueDate)}</span>}
                     </div>
                     <div className="flex items-center justify-between">
-                      {task.assignee === 'max' && column.id === 'todo' && (
-                        <button 
-                          onClick={() => moveTask(task.id, 'inprogress')} 
-                          className="text-xs px-3 py-1 rounded bg-[#5c7cfa]/20 text-[#5c7cfa] hover:bg-[#5c7cfa]/30 transition-colors"
-                        >
-                          ▶️ Start
-                        </button>
-                      )}
-                      {task.assignee === 'max' && column.id === 'inprogress' && (
-                        <button 
-                          onClick={() => moveTask(task.id, 'done')} 
-                          className="text-xs px-3 py-1 rounded bg-[#40c057]/20 text-[#40c057] hover:bg-[#40c057]/30 transition-colors"
-                        >
-                          ✅ Done
-                        </button>
-                      )}
-                      {task.assignee === 'julius' || (column.id !== 'todo' && column.id !== 'inprogress') ? (
-                        <div></div>
-                      ) : null}
+                      <div className="flex gap-2">
+                        {task.assignee === 'max' && column.id === 'todo' && (
+                          <>
+                            <button 
+                              onClick={() => moveTask(task.id, 'inprogress')} 
+                              className="text-xs px-3 py-1 rounded bg-[#5c7cfa]/20 text-[#5c7cfa] hover:bg-[#5c7cfa]/30 transition-colors"
+                            >
+                              ▶️ Start
+                            </button>
+                            <button 
+                              onClick={() => sendTelegramNotification(task)} 
+                              className="text-xs px-3 py-1 rounded bg-[#fab005]/20 text-[#fab005] hover:bg-[#fab005]/30 transition-colors"
+                              title="Send notification to Max"
+                            >
+                              🔔 Notify
+                            </button>
+                          </>
+                        )}
+                        {task.assignee === 'max' && column.id === 'inprogress' && (
+                          <button 
+                            onClick={() => moveTask(task.id, 'done')} 
+                            className="text-xs px-3 py-1 rounded bg-[#40c057]/20 text-[#40c057] hover:bg-[#40c057]/30 transition-colors"
+                          >
+                            ✅ Done
+                          </button>
+                        )}
+                      </div>
                       <button onClick={() => deleteTask(task.id)} className="p-1 text-[#9a9a9e] hover:text-[#fa5252]">×</button>
                     </div>
                   </div>
