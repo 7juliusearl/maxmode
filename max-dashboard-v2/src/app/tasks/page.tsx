@@ -10,6 +10,9 @@ interface Task {
   createdAt: string
 }
 
+// Event names for cross-tab sync
+const TASK_CHANGED = 'maxmode-task-changed'
+
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [newTask, setNewTask] = useState('')
@@ -22,9 +25,33 @@ export default function TasksPage() {
     }
   }, [])
 
+  // Broadcast task changes to other tabs
+  const broadcastChange = () => {
+    window.dispatchEvent(new Event(TASK_CHANGED))
+  }
+
+  // Listen for changes from other tabs
+  useEffect(() => {
+    const handleStorage = () => {
+      const saved = localStorage.getItem('maxmode-tasks')
+      if (saved) {
+        setTasks(JSON.parse(saved))
+      }
+    }
+    
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener(TASK_CHANGED, handleStorage)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener(TASK_CHANGED, handleStorage)
+    }
+  }, [])
+
   const saveTasks = (newTasks: Task[]) => {
     setTasks(newTasks)
     localStorage.setItem('maxmode-tasks', JSON.stringify(newTasks))
+    broadcastChange()
   }
 
   const addTask = (e: React.FormEvent) => {
