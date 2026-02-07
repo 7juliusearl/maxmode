@@ -33,7 +33,7 @@ const ASSIGNEES = [
   { id: 'max', label: 'Max', emoji: '🤖' },
 ] as const
 
-const TELEGRAM_CHAT_ID = '-1003718000012' // Julius's chat
+const TELEGRAM_CHAT_ID = '8199918956' // Julius's DM
 
 const TASK_CHANGED = 'maxmode-task-changed'
 
