@@ -7,7 +7,7 @@ import { StatsWidget } from '@/components/widgets/StatsWidget'
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen p-4 md:p-6 max-w-6xl mx-auto">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-6 md:mb-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

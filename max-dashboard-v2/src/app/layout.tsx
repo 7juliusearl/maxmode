@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { Navigation } from '@/components/Navigation'
 
 export const metadata: Metadata = {
   title: 'MaxMode v2',
@@ -13,7 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-[#0d0d0f] text-[#e8e8e8]">{children}</body>
+      <body className="bg-[#0d0d0f] text-[#e8e8e8]">
+        <Navigation>{children}</Navigation>
+      </body>
     </html>
   )
 }
