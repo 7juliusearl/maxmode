@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 
 interface Task {
   id: string
@@ -44,18 +45,47 @@ export function StatsWidget() {
   }, [])
 
   const items = [
-    { label: 'Tasks', value: taskCount, icon: '📋', color: 'text-[#5c7cfa]', bg: 'bg-[#5c7cfa]/20' },
-    { label: 'Done', value: completedCount, icon: '✅', color: 'text-[#40c057]', bg: 'bg-[#40c057]/20' },
-    { label: 'Research', value: 0, icon: '🔍', color: 'text-[#fab005]', bg: 'bg-[#fab005]/20' },
-    { label: 'Weddings', value: 0, icon: '💒', color: 'text-[#fa5252]', bg: 'bg-[#fa5252]/20' },
+    { 
+      label: 'Tasks', 
+      value: taskCount, 
+      icon: '📋', 
+      color: 'text-[#5c7cfa]', 
+      bg: 'bg-[#5c7cfa]/20',
+      href: '/tasks'
+    },
+    { 
+      label: 'Done', 
+      value: completedCount, 
+      icon: '✅', 
+      color: 'text-[#40c057]', 
+      bg: 'bg-[#40c057]/20',
+      href: '/tasks'
+    },
+    { 
+      label: 'Research', 
+      value: 0, 
+      icon: '🔍', 
+      color: 'text-[#fab005]', 
+      bg: 'bg-[#fab005]/20',
+      href: '/research'
+    },
+    { 
+      label: 'Weddings', 
+      value: 0, 
+      icon: '💒', 
+      color: 'text-[#fa5252]', 
+      bg: 'bg-[#fa5252]/20',
+      href: '#'
+    },
   ]
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       {items.map((item) => (
-        <div 
+        <Link
           key={item.label}
-          className="card p-4 hover:border-[#2a2a2e] transition-colors cursor-pointer"
+          href={item.href}
+          className="card p-4 hover:border-[#5c7cfa] transition-colors cursor-pointer"
         >
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-lg ${item.bg} flex items-center justify-center text-lg`}>
@@ -66,7 +96,7 @@ export function StatsWidget() {
               <p className="text-xs text-[#9a9a9e]">{item.label}</p>
             </div>
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   )
