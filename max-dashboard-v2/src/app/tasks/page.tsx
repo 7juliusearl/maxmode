@@ -7,8 +7,13 @@ interface Task {
   text: string
   completed: boolean
   category: string
+  priority: 'high' | 'medium' | 'low'
+  dueDate: string | null
   createdAt: string
 }
+
+const CATEGORIES = ['General', 'Wedding', 'Business', 'Personal', 'Marketing']
+const PRIORITIES = ['high', 'medium', 'low'] as const
 
 // Event names for cross-tab sync
 const TASK_CHANGED = 'maxmode-task-changed'
@@ -16,7 +21,11 @@ const TASK_CHANGED = 'maxmode-task-changed'
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [newTask, setNewTask] = useState('')
+  const [category, setCategory] = useState('General')
+  const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium')
+  const [dueDate, setDueDate] = useState('')
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
+  const [showAddForm, setShowAddForm] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('maxmode-tasks')
@@ -62,12 +71,16 @@ export default function TasksPage() {
       id: Date.now().toString(),
       text: newTask.trim(),
       completed: false,
-      category: 'General',
+      category,
+      priority,
+      dueDate: dueDate || null,
       createdAt: new Date().toISOString(),
     }
 
     saveTasks([task, ...tasks])
     setNewTask('')
+    setDueDate('')
+    setShowAddForm(false)
   }
 
   const toggleTask = (id: string) => {
@@ -78,6 +91,27 @@ export default function TasksPage() {
 
   const deleteTask = (id: string) => {
     saveTasks(tasks.filter(t => t.id !== id))
+  }
+
+  const getPriorityColor = (p: string) => {
+    switch (p) {
+      case 'high': return 'bg-[#fa5252]/20 text-[#fa5252]'
+      case 'medium': return 'bg-[#fab005]/20 text-[#fab005]'
+      case 'low': return 'bg-[#40c057]/20 text-[#40c057]'
+      default: return 'bg-[#2a2a2e] text-[#9a9a9e]'
+    }
+  }
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return ''
+    const date = new Date(dateStr)
+    const today = new Date()
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    
+    if (date.toDateString() === today.toDateString()) return 'Today'
+    if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
   const filteredTasks = tasks.filter(t => {
@@ -115,24 +149,86 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* Add Task */}
-      <form onSubmit={addTask} className="mb-6">
-        <div className="flex gap-2">
+      {/* Add Task Button */}
+      <button
+        onClick={() => setShowAddForm(!showAddForm)}
+        className={`w-full mb-6 py-3 rounded-lg font-medium transition-colors ${
+          showAddForm 
+            ? 'bg-[#2a2a2e] text-[#9a9a9e]' 
+            : 'bg-[#5c7cfa] hover:bg-[#4c6ef5] text-white'
+        }`}
+      >
+        {showAddForm ? 'Cancel' : '+ Add Task'}
+      </button>
+
+      {/* Add Task Form */}
+      {showAddForm && (
+        <form onSubmit={addTask} className="card p-4 mb-6">
           <input
             type="text"
             value={newTask}
             onChange={(e) => setNewTask(e.target.value)}
-            placeholder="Add a new task..."
-            className="flex-1 bg-[#161618] border border-[#2a2a2e] rounded-lg px-4 py-3 text-white placeholder-[#9a9a9e] focus:outline-none focus:border-[#5c7cfa] transition-colors"
+            placeholder="What needs to be done?"
+            className="w-full bg-[#0d0d0f] border border-[#2a2a2e] rounded-lg px-4 py-3 text-white placeholder-[#9a9a9e] focus:outline-none focus:border-[#5c7cfa] transition-colors mb-4"
+            autoFocus
           />
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            {/* Category */}
+            <div>
+              <label className="block text-xs text-[#9a9a9e] mb-1">Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full bg-[#0d0d0f] border border-[#2a2a2e] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#5c7cfa]"
+              >
+                {CATEGORIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Priority */}
+            <div>
+              <label className="block text-xs text-[#9a9a9e] mb-1">Priority</label>
+              <div className="flex gap-1">
+                {PRIORITIES.map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPriority(p)}
+                    className={`flex-1 py-2 rounded text-xs font-medium capitalize transition-colors ${
+                      priority === p 
+                        ? getPriorityColor(p) 
+                        : 'bg-[#0d0d0f] text-[#9a9a9e] hover:bg-[#2a2a2e]'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Due Date */}
+            <div>
+              <label className="block text-xs text-[#9a9a9e] mb-1">Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full bg-[#0d0d0f] border border-[#2a2a2e] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#5c7cfa]"
+              />
+            </div>
+          </div>
+
           <button
             type="submit"
-            className="bg-[#5c7cfa] hover:bg-[#4c6ef5] text-white px-6 py-3 rounded-lg font-medium transition-colors"
+            className="w-full bg-[#40c057] hover:bg-[#37b24d] text-white py-3 rounded-lg font-medium transition-colors"
           >
-            Add
+            Add Task
           </button>
-        </div>
-      </form>
+        </form>
+      )}
 
       {/* Filter */}
       <div className="flex gap-2 mb-4">
@@ -165,13 +261,13 @@ export default function TasksPage() {
           filteredTasks.map((task) => (
             <div
               key={task.id}
-              className={`card p-4 flex items-center gap-3 transition-colors ${
+              className={`card p-4 flex items-start gap-3 transition-colors ${
                 task.completed ? 'opacity-50' : 'hover:bg-[#1a1a1c]'
               }`}
             >
               <button
                 onClick={() => toggleTask(task.id)}
-                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors shrink-0 ${
                   task.completed 
                     ? 'bg-[#40c057] border-[#40c057]' 
                     : 'border-[#2a2a2e] hover:border-[#5c7cfa]'
@@ -184,13 +280,33 @@ export default function TasksPage() {
                 )}
               </button>
               
-              <span className={`flex-1 ${task.completed ? 'line-through text-[#9a9a9e]' : 'text-white'}`}>
-                {task.text}
-              </span>
+              <div className="flex-1 min-w-0">
+                <p className={`text-white ${task.completed ? 'line-through text-[#9a9a9e]' : ''}`}>
+                  {task.text}
+                </p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {/* Category tag */}
+                  <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e] text-[#9a9a9e]">
+                    {task.category}
+                  </span>
+                  
+                  {/* Priority tag */}
+                  <span className={`text-xs px-2 py-0.5 rounded ${getPriorityColor(task.priority)}`}>
+                    {task.priority}
+                  </span>
+                  
+                  {/* Due date */}
+                  {task.dueDate && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e] text-[#9a9a9e]">
+                      {formatDate(task.dueDate)}
+                    </span>
+                  )}
+                </div>
+              </div>
               
               <button
                 onClick={() => deleteTask(task.id)}
-                className="p-2 text-[#9a9a9e] hover:text-[#fa5252] transition-colors"
+                className="p-2 text-[#9a9a9e] hover:text-[#fa5252] transition-colors shrink-0"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6" />
