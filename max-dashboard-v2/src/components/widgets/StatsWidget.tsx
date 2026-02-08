@@ -5,10 +5,10 @@ import { useState, useEffect } from 'react'
 interface Task {
   id: string
   text: string
-  status: 'todo' | 'inprogress' | 'done'
-  assignee: 'julius' | 'max' | null
+  status: string
+  assignee: string
   category: string
-  priority: 'high' | 'medium' | 'low'
+  priority: string
   dueDate: string | null
   createdAt: string
 }
@@ -16,35 +16,66 @@ interface Task {
 export function StatsWidget() {
   const [taskCount, setTaskCount] = useState(0)
   const [completedCount, setCompletedCount] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const loadTaskStats = () => {
-      const saved = localStorage.getItem('maxmode-tasks-kanban')
-      if (saved) {
-        const tasks: Task[] = JSON.parse(saved)
-        setTaskCount(tasks.filter(t => t.status !== 'done').length)
-        setCompletedCount(tasks.filter(t => t.status === 'done').length)
-      } else {
-        setTaskCount(0)
-        setCompletedCount(0)
+    const loadTaskStats = async () => {
+      setIsLoading(true)
+      
+      try {
+        const response = await fetch('/api/tasks/get')
+        const data = await response.json()
+        
+        if (data.success && data.tasks) {
+          const tasks: Task[] = data.tasks
+          setTaskCount(tasks.filter(t => t.status !== 'done').length)
+          setCompletedCount(tasks.filter(t => t.status === 'done').length)
+        } else {
+          // Fallback to localStorage
+          const saved = localStorage.getItem('maxmode-tasks-kanban')
+          if (saved) {
+            const tasks: Task[] = JSON.parse(saved)
+            setTaskCount(tasks.filter(t => t.status !== 'done').length)
+            setCompletedCount(tasks.filter(t => t.status === 'done').length)
+          } else {
+            setTaskCount(0)
+            setCompletedCount(0)
+          }
+        }
+      } catch (error) {
+        // Fallback to localStorage
+        const saved = localStorage.getItem('maxmode-tasks-kanban')
+        if (saved) {
+          const tasks: Task[] = JSON.parse(saved)
+          setTaskCount(tasks.filter(t => t.status !== 'done').length)
+          setCompletedCount(tasks.filter(t => t.status === 'done').length)
+        }
+      } finally {
+        setIsLoading(false)
       }
     }
 
     loadTaskStats()
-
-    const interval = setInterval(loadTaskStats, 1000)
-    window.addEventListener('storage', loadTaskStats)
+    
+    // Poll for updates every 10 seconds
+    const interval = setInterval(loadTaskStats, 10000)
+    
+    // Listen for task changes from other tabs
+    const handleChange = () => loadTaskStats()
+    window.addEventListener('maxmode-task-changed', handleChange)
+    window.addEventListener('storage', handleChange)
     
     return () => {
       clearInterval(interval)
-      window.removeEventListener('storage', loadTaskStats)
+      window.removeEventListener('maxmode-task-changed', handleChange)
+      window.removeEventListener('storage', handleChange)
     }
   }, [])
 
   const items = [
     { 
       label: 'Tasks', 
-      value: taskCount, 
+      value: isLoading ? '-' : taskCount, 
       icon: '📋', 
       color: 'text-[#5c7cfa]', 
       bg: 'bg-[#5c7cfa]/20',
@@ -52,7 +83,7 @@ export function StatsWidget() {
     },
     { 
       label: 'Done', 
-      value: completedCount, 
+      value: isLoading ? '-' : completedCount, 
       icon: '✅', 
       color: 'text-[#40c057]', 
       bg: 'bg-[#40c057]/20',
@@ -60,7 +91,7 @@ export function StatsWidget() {
     },
     { 
       label: 'Research', 
-      value: 0, 
+      value: '-', 
       icon: '🔍', 
       color: 'text-[#fab005]', 
       bg: 'bg-[#fab005]/20',
@@ -68,7 +99,7 @@ export function StatsWidget() {
     },
     { 
       label: 'Weddings', 
-      value: 0, 
+      value: '-', 
       icon: '💒', 
       color: 'text-[#fa5252]', 
       bg: 'bg-[#fa5252]/20',
