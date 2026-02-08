@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { PageLayout } from "@/components/Navigation";
 
 export const metadata: Metadata = {
   title: "MaxMode - AI Productivity Dashboard",
@@ -19,7 +20,7 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
       <body className="min-h-screen antialiased">
-        {children}
+        <PageLayout>{children}</PageLayout>
       </body>
     </html>
   );

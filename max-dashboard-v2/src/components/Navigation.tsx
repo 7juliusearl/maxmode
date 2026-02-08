@@ -2,128 +2,148 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 interface NavItem {
-  label: string
   href: string
-  icon: string
+  label: string
+  icon: React.ReactNode
 }
 
-export function Navigation({ children }: { children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false)
+const NAV_ITEMS: NavItem[] = [
+  {
+    href: '/',
+    label: 'Dashboard',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+      </svg>
+    ),
+  },
+  {
+    href: '/tasks',
+    label: 'Tasks',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+      </svg>
+    ),
+  },
+  {
+    href: '/research',
+    label: 'Research',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+    ),
+  },
+]
 
-  const navItems: NavItem[] = [
-    { label: 'Home', href: '/', icon: '🏠' },
-    { label: 'Tasks', href: '/tasks', icon: '📋' },
-    { label: 'Research', href: '/research', icon: '🔬' },
-    { label: 'Settings', href: '/settings', icon: '⚙️' },
-  ]
+export function Navigation() {
+  const pathname = usePathname()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   return (
     <>
-      {/* Mobile Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0d0d0f]/95 backdrop-blur-sm border-b border-[#2a2a2e] md:hidden">
-        <div className="flex items-center justify-between px-4 py-3">
-          <span className="text-lg font-semibold text-white">MaxMode</span>
-          <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="p-2 text-[#9a9a9e] hover:text-white transition-colors"
-            aria-label="Menu"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {isOpen ? (
-                <>
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </>
-              ) : (
-                <>
-                  <line x1="4" x2="20" y1="12" y2="12" />
-                  <line x1="4" x2="20" y1="6" y2="6" />
-                  <line x1="4" x2="20" y1="18" y2="18" />
-                </>
-              )}
-            </svg>
-          </button>
+      {/* Desktop Navigation */}
+      <nav className="hidden md:flex items-center gap-1 p-2">
+        {NAV_ITEMS.map((item) => {
+          const isActive = pathname === item.href
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                isActive
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-surface)]'
+              }`}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </Link>
+          )
+        })}
+      </nav>
+
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        className="md:hidden p-2 text-[var(--color-text-muted)] hover:text-white transition-colors"
+      >
+        {isMobileMenuOpen ? (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        ) : (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        )}
+      </button>
+
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 md:hidden" onClick={() => setIsMobileMenuOpen(false)}>
+          <div className="absolute top-0 right-0 w-64 bg-[var(--color-bg)] h-full shadow-xl p-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-white">Menu</h2>
+              <button
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-2 text-[var(--color-text-muted)] hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2">
+              {NAV_ITEMS.map((item) => {
+                const isActive = pathname === item.href
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${
+                      isActive
+                        ? 'bg-[var(--color-primary)] text-white'
+                        : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-surface)]'
+                    }`}
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+export function PageLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[var(--color-bg)]">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-[var(--color-bg)]/80 backdrop-blur-lg border-b border-[var(--color-border-subtle)]">
+        <div className="max-w-6xl mx-auto px-4 md:px-6">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-2">
+              <span className="text-2xl">🦊</span>
+              <span className="text-xl font-bold text-white">MaxMode</span>
+            </Link>
+
+            {/* Navigation */}
+            <Navigation />
+          </div>
         </div>
       </header>
 
-      {/* Mobile Menu Overlay */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-
-      {/* Mobile Sidebar */}
-      <aside className={`
-        fixed top-0 right-0 bottom-0 w-64 bg-[#0d0d0f] border-l border-[#2a2a2e] z-50 transform transition-transform duration-200 md:hidden
-        ${isOpen ? 'translate-x-0' : 'translate-x-full'}
-      `}>
-        <div className="p-4 border-b border-[#2a2a2e]">
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-semibold text-white">Menu</span>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="p-2 text-[#9a9a9e] hover:text-white transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-        </div>
-        <nav className="p-4">
-          <ul className="space-y-2">
-            {navItems.map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-[#9a9a9e] hover:bg-[#2a2a2e] hover:text-white transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <span className="text-xl">{item.icon}</span>
-                  <span className="font-medium">{item.label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </aside>
-
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 flex-col bg-[#0d0d0f] border-r border-[#2a2a2e]">
-        <div className="p-6 border-b border-[#2a2a2e]">
-          <h1 className="text-xl font-bold text-white">MaxMode</h1>
-          <p className="text-sm text-[#9a9a9e] mt-1">Dashboard</p>
-        </div>
-        <nav className="flex-1 p-4">
-          <ul className="space-y-2">
-            {navItems.map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-[#9a9a9e] hover:bg-[#2a2a2e] hover:text-white transition-colors"
-                >
-                  <span className="text-xl">{item.icon}</span>
-                  <span className="font-medium">{item.label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className="p-4 border-t border-[#2a2a2e]">
-          <p className="text-xs text-[#9a9a9e] text-center">MaxMode v2.0</p>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="md:pl-64">
-        <div className="md:hidden h-14" />
-        {children}
-      </main>
-    </>
+      {/* Page Content */}
+      <main>{children}</main>
+    </div>
   )
 }
