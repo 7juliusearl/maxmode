@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Link from 'next/link'
 
 interface Task {
   id: string
@@ -11,14 +12,25 @@ interface Task {
   priority: 'high' | 'medium' | 'low'
   dueDate: string | null
   createdAt: string
-  maxNotes?: string
+  result?: string
+  researchId?: string
+}
+
+interface ResearchItem {
+  id: string
+  title: string
+  content: string
+  type: 'research' | 'content' | 'analysis'
+  createdAt: string
+  taskId?: string
 }
 
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
-  type?: 'task_confirmation' | 'task_update' | 'info'
+  type?: 'task_confirmation' | 'task_update' | 'info' | 'research_prompt'
   taskData?: Partial<Task>
+  researchItem?: ResearchItem
 }
 
 const COLUMNS = [
@@ -38,10 +50,11 @@ type TaskConfirmation = {
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
+  const [researchItems, setResearchItems] = useState<ResearchItem[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([
     { 
       role: 'assistant', 
-      content: "Hi! I'm Max, your AI task manager. Just describe what you need to do, and I'll:\n\n1️⃣ Create a task from your description\n2️⃣ Ask clarifying questions if needed\n3️⃣ Add it to your task board\n\nWhat would you like to get done today?",
+      content: "Hi! I'm Max, your AI task manager. Just describe what you need to do, and I'll:\n\n1️⃣ Create a task from your description\n2️⃣ Ask clarifying questions if needed\n3️⃣ Add it to your task board\n\nWhat would you like to get done today?\n\n💡 Tip: For research tasks, I'll create detailed reports you can view on the Research page.",
       type: 'info'
     }
   ])
@@ -53,6 +66,7 @@ export default function TasksPage() {
 
   useEffect(() => {
     fetchTasks()
+    fetchResearch()
   }, [])
 
   const fetchTasks = async () => {
@@ -66,6 +80,19 @@ export default function TasksPage() {
     } catch {
       const saved = localStorage.getItem('maxmode-tasks-kanban')
       if (saved) setTasks(JSON.parse(saved))
+    }
+  }
+
+  const fetchResearch = async () => {
+    try {
+      const response = await fetch('/api/research/get')
+      const data = await response.json()
+      if (data.success && data.items) {
+        setResearchItems(data.items)
+      }
+    } catch {
+      const saved = localStorage.getItem('maxmode-research')
+      if (saved) setResearchItems(JSON.parse(saved))
     }
   }
 
@@ -83,12 +110,28 @@ export default function TasksPage() {
     window.dispatchEvent(new Event('maxmode-task-changed'))
   }
 
+  const saveResearch = async (newItems: ResearchItem[]) => {
+    setResearchItems(newItems)
+    try {
+      await fetch('/api/research/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: newItems })
+      })
+    } catch (e) { console.error(e) }
+    localStorage.setItem('maxmode-research', JSON.stringify(newItems))
+  }
+
   // Parse task from natural language
-  const parseTask = (text: string): Partial<Task> => {
+  const parseTask = (text: string): { taskData: Partial<Task>, isResearch: boolean } => {
     const lower = text.toLowerCase()
     
+    // Check if this is a research request
+    const researchKeywords = ['research', 'look up', 'find out', 'investigate', 'analyze', 'compare']
+    const isResearch = researchKeywords.some(k => lower.includes(k)) || lower.includes('?')
+    
     // Parse category
-    let category = 'General'
+    let category = isResearch ? 'Research' : 'General'
     const categoryKeywords: Record<string, string[]> = {
       'wedding': ['wedding', 'bride', 'groom', 'venue', 'vendor', 'marriage'],
       'business': ['quote', 'invoice', 'client', 'lead', 'sale', 'proposal', 'contract', 'business'],
@@ -141,11 +184,14 @@ export default function TasksPage() {
     cleanText = cleanText.charAt(0).toUpperCase() + cleanText.slice(1)
 
     return {
-      text: cleanText || text,
-      category,
-      priority,
-      assignee,
-      dueDate,
+      taskData: {
+        text: cleanText || text,
+        category,
+        priority,
+        assignee,
+        dueDate,
+      },
+      isResearch
     }
   }
 
@@ -166,8 +212,23 @@ export default function TasksPage() {
     return task
   }
 
-  const formatTaskConfirmation = (data: Partial<Task>) => {
-    const parts = [`📝 **Task Summary**`]
+  const createResearchItem = (title: string, content: string, type: ResearchItem['type'], taskId?: string) => {
+    const item: ResearchItem = {
+      id: Date.now().toString(),
+      title,
+      content,
+      type,
+      createdAt: new Date().toISOString(),
+      taskId
+    }
+    
+    const newItems = [item, ...researchItems]
+    saveResearch(newItems)
+    return item
+  }
+
+  const formatTaskConfirmation = (data: Partial<Task>, isResearch: boolean = false) => {
+    const parts = [`📝 **${isResearch ? 'Research Request' : 'Task'} Summary**`]
     parts.push(`"${data.text}"`)
     
     if (data.priority === 'high') parts.push('🔴 Priority: High')
@@ -184,6 +245,10 @@ export default function TasksPage() {
     
     parts.push(`📁 Category: ${data.category}`)
     parts.push(`👤 Assignee: ${data.assignee === 'max' ? '🤖 Max' : '👤 Julius'}`)
+    
+    if (isResearch) {
+      parts.push('\n📚 Max will create a detailed research report that you can view on the Research page.')
+    }
     
     return parts.join('\n')
   }
@@ -204,14 +269,23 @@ export default function TasksPage() {
     // Check if we're waiting for confirmation
     if (pendingConfirmation) {
       if (lower.includes('yes') || lower.includes('yeah') || lower.includes('yep') || lower.includes('sure') || lower.includes('go') || lower.includes('do it')) {
-        // User confirmed - create the task
         const newTask = createTask(pendingConfirmation)
         setPendingConfirmation(null)
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: `✅ Task created successfully!\n\n"${newTask.text}" has been added to your board.\n\nAnything else I can help with?`,
-          type: 'task_update'
-        }])
+        
+        // If it's a research task for Max, mention the research page
+        if (pendingConfirmation.category === 'Research' || pendingConfirmation.assignee === 'max') {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `✅ Task created! "${newTask.text}" has been added.\n\n🔍 Max will conduct research and create a detailed report on the Research page.\n\nAnything else?`,
+            type: 'task_update'
+          }])
+        } else {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `✅ Task created successfully!\n\n"${newTask.text}" has been added to your board.\n\nAnything else I can help with?`,
+            type: 'task_update'
+          }])
+        }
       } else if (lower.includes('no') || lower.includes('nope') || lower.includes('cancel') || lower.includes('nevermind')) {
         setPendingConfirmation(null)
         setMessages(prev => [...prev, {
@@ -220,7 +294,6 @@ export default function TasksPage() {
           type: 'info'
         }])
       } else if (lower.includes('change') || lower.includes('modify') || lower.includes('edit')) {
-        // User wants to modify the task
         const updatedData = { ...pendingConfirmation }
         
         if (lower.includes('high priority') || lower.includes('urgent')) updatedData.priority = 'high'
@@ -236,7 +309,7 @@ export default function TasksPage() {
         setPendingConfirmation(updatedData)
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: `Updated! Here's the new task:\n\n${formatTaskConfirmation(updatedData)}\n\nSay "yes" to confirm or "change" to modify.`,
+          content: `Updated! Here's the new task:\n\n${formatTaskConfirmation(updatedData, updatedData.category === 'Research')}\n\nSay "yes" to confirm or "change" to modify.`,
           type: 'task_confirmation',
           taskData: updatedData
         }])
@@ -249,20 +322,20 @@ export default function TasksPage() {
       }
     } else {
       // New task request
-      const taskData = parseTask(userMessage)
+      const { taskData, isResearch } = parseTask(userMessage)
       
       if (taskData.text && taskData.text.length > 2) {
         setPendingConfirmation(taskData as TaskConfirmation)
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: `I've analyzed your request. Here's what I understood:\n\n${formatTaskConfirmation(taskData)}\n\nDoes this look correct? Say "yes" to create or "no" to cancel.`,
+          content: `I've analyzed your request. Here's what I understood:\n\n${formatTaskConfirmation(taskData, isResearch || taskData.category === 'Research')}\n\nDoes this look correct? Say "yes" to create or "no" to cancel.`,
           type: 'task_confirmation',
           taskData: taskData
         }])
       } else {
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: "I'm not sure what you mean. Could you describe the task more clearly?\n\nTry: \"Follow up with the bride tomorrow\" or \"Send quote to client urgent\"",
+          content: "I'm not sure what you mean. Could you describe the task more clearly?\n\nTry: \"Research wedding venues\" or \"Follow up with the bride tomorrow\"",
           type: 'info'
         }])
       }
@@ -298,9 +371,15 @@ export default function TasksPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-white mb-2">Tasks</h1>
-        <p className="text-[var(--color-text-muted)]">
-          {tasks.length} tasks • {kvConnected ? '☁️ Synced' : '📱 Local'}
-        </p>
+        <div className="flex items-center gap-4 text-sm text-[var(--color-text-muted)]">
+          <span>{tasks.length} tasks</span>
+          <span>•</span>
+          <span>{kvConnected ? '☁️ Synced' : '📱 Local'}</span>
+          <span>•</span>
+          <Link href="/research" className="text-[var(--color-primary)] hover:underline">
+            📚 Research {researchItems.length}
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
@@ -324,7 +403,7 @@ export default function TasksPage() {
                 Chat with Max
               </h2>
               <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                Describe tasks naturally, I'll handle the rest
+                Describe tasks naturally • Research goes to Research page
               </p>
             </div>
 
@@ -402,10 +481,15 @@ export default function TasksPage() {
         <div className="lg:col-span-1">
           <div className="card h-[600px] flex flex-col">
             <div className="bg-[var(--color-surface)] px-5 py-4 border-b border-[var(--color-border-subtle)] rounded-t-xl">
-              <h2 className="font-semibold text-white flex items-center gap-2">
-                <span className="text-xl">📋</span>
-                Task Board
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-white flex items-center gap-2">
+                  <span className="text-xl">📋</span>
+                  Task Board
+                </h2>
+                <Link href="/research" className="text-xs text-[var(--color-primary)] hover:underline">
+                  View Research →
+                </Link>
+              </div>
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -416,7 +500,6 @@ export default function TasksPage() {
                 </div>
               ) : (
                 <>
-                  {/* To Do */}
                   {getColumnTasks('todo').map(task => (
                     <div key={task.id} className="bg-[var(--color-bg)] rounded-lg p-4 border border-[var(--color-border-subtle)]">
                       <p className="text-white font-medium mb-2">{task.text}</p>
@@ -439,23 +522,26 @@ export default function TasksPage() {
                     </div>
                   ))}
                   
-                  {/* In Progress */}
                   {getColumnTasks('inprogress').map(task => (
                     <div key={task.id} className="bg-[var(--color-bg)] rounded-lg p-4 border border-[#60A5FA]">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-[#60A5FA]">🔄</span>
                         <p className="text-white font-medium">{task.text}</p>
                       </div>
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        <span className="px-2 py-0.5 rounded bg-[#60A5FA]/20 text-[#60A5FA]">In Progress</span>
-                      </div>
                     </div>
                   ))}
                   
-                  {/* Done */}
                   {getColumnTasks('done').slice(0, 5).map(task => (
                     <div key={task.id} className="bg-[var(--color-bg)] rounded-lg p-4 border border-[#22C55E]/30 opacity-75">
                       <p className="text-white line-through decoration-[#22C55E]">{task.text}</p>
+                      {task.researchId && (
+                        <Link href="/research" className="text-xs text-[var(--color-primary)] hover:underline mt-2 block">
+                          📚 View research results
+                        </Link>
+                      )}
+                      {task.result && (
+                        <p className="text-xs text-[var(--color-text-muted)] mt-2 line-clamp-2">{task.result}</p>
+                      )}
                     </div>
                   ))}
                 </>
