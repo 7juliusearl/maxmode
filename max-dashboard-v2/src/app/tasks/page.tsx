@@ -28,11 +28,6 @@ const COLUMNS = [
   { id: 'done', label: 'Done', color: 'border-[#40c057]', icon: '✅' },
 ] as const
 
-const ASSIGNEES = [
-  { id: 'julius', label: 'Julius', emoji: '👤' },
-  { id: 'max', label: 'Max', emoji: '🤖' },
-] as const
-
 const TELEGRAM_CHAT_ID = '8199918956'
 
 export default function TasksPage() {
@@ -41,7 +36,6 @@ export default function TasksPage() {
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [showChat, setShowChat] = useState(false)
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [kvConnected, setKvConnected] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLInputElement>(null)
@@ -177,7 +171,7 @@ export default function TasksPage() {
         saveTasks(tasks.filter(t => t.id !== pendingMaxTask.id))
         setMessages(prev => [...prev, { role: 'assistant', content: 'No problem! Task cancelled.' }])
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: 'Got it. Say "go" to proceed or "cancel" to skip.', taskId: pendingMaxTask.id }])
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Say "go" to proceed or "cancel" to skip.', taskId: pendingMaxTask.id }])
       }
     } else {
       const taskData = parseTask(userMessage)
@@ -186,7 +180,7 @@ export default function TasksPage() {
         setMessages(prev => [...prev, { 
           role: 'assistant', 
           content: taskData.assignee === 'max' 
-            ? `📋 Task sent to your Telegram! Check your DM.`
+            ? `📋 Task sent to your Telegram!`
             : `Created: "${newTask.text}"`,
           task: newTask 
         }])
@@ -223,21 +217,11 @@ export default function TasksPage() {
   const inprogressMaxTasks = tasks.filter(t => t.assignee === 'max' && t.status === 'inprogress')
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-4 md:p-6 min-h-screen">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">Tasks</h1>
-          <p className="text-[#9a9a9e]">{tasks.length} total • {kvConnected ? '☁️ Synced' : '📱 Local'}</p>
-        </div>
-        <button
-          onClick={() => { setShowChat(!showChat); if (!showChat) setTimeout(() => chatInputRef.current?.focus(), 100) }}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            showChat ? 'bg-[#2a2a2e] text-[#9a9a9e]' : 'bg-[#5c7cfa] text-white'
-          }`}
-        >
-          {showChat ? '📋 Board' : '💬 Chat'}
-        </button>
+      <div className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">Tasks</h1>
+        <p className="text-[#9a9a9e]">{tasks.length} total • {kvConnected ? '☁️ Synced' : '📱 Local'}</p>
       </div>
 
       {/* Stats Bar */}
@@ -250,15 +234,109 @@ export default function TasksPage() {
         ))}
       </div>
 
-      {showChat ? (
-        /* Chat Panel */
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="card p-4 flex flex-col h-[500px]">
-            <div className="flex-1 overflow-y-auto space-y-3 mb-3">
+      {/* Kanban Board */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {COLUMNS.map(column => (
+          <div key={column.id} className="flex flex-col">
+            <div className={`bg-[#161618] rounded-t-lg px-4 py-3 border-t-2 ${column.color}`}>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-white">{column.icon} {column.label}</span>
+                <span className="text-xs bg-[#0d0d0f] px-2 py-0.5 rounded-full">{getColumnTasks(column.id).length}</span>
+              </div>
+            </div>
+            <div className="bg-[#161618]/50 rounded-b-lg p-2 flex-1 min-h-[300px] space-y-2">
+              {getColumnTasks(column.id).map(task => (
+                <div key={task.id} className="card p-3">
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="text-white flex-1">{task.text}</p>
+                    {task.assignee === 'max' && <span className="ml-2">🤖</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{task.category}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${getPriorityColor(task.priority)}`}>{task.priority}</span>
+                    {task.dueDate && <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{formatDate(task.dueDate)}</span>}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    {task.assignee === 'max' && column.id === 'todo' && (
+                      <button onClick={() => moveTask(task.id, 'inprogress')} className="text-xs px-3 py-1 rounded bg-[#5c7cfa]/20 text-[#5c7cfa]">▶️ Start</button>
+                    )}
+                    {task.assignee === 'max' && column.id === 'inprogress' && (
+                      <button onClick={() => moveTask(task.id, 'done')} className="text-xs px-3 py-1 rounded bg-[#40c057]/20 text-[#40c057]">✅ Done</button>
+                    )}
+                    <button onClick={() => deleteTask(task.id)} className="p-1 text-[#9a9a9e] hover:text-[#fa5252]">×</button>
+                  </div>
+                </div>
+              ))}
+              {getColumnTasks(column.id).length === 0 && (
+                <div className="text-center py-8 text-[#9a9a9e] text-sm">No tasks</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Floating Chat Button */}
+      <button
+        onClick={() => { setShowChat(true); setTimeout(() => chatInputRef.current?.focus(), 100) }}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-[#5c7cfa] hover:bg-[#4c6ef5] rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 z-50"
+      >
+        💬
+      </button>
+
+      {/* Chat Overlay */}
+      {showChat && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
+          <div className="bg-[#0d0d0f] w-full max-w-md h-full shadow-2xl flex flex-col animate-slide-in">
+            {/* Chat Header */}
+            <div className="bg-[#161618] px-4 py-3 border-b border-[#2a2a2e] flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-white">💬 Chat with Max</h2>
+                <p className="text-xs text-[#9a9a9e]">Describe a task or ask questions</p>
+              </div>
+              <button
+                onClick={() => setShowChat(false)}
+                className="p-2 hover:bg-[#2a2a2e] rounded-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Max Tasks Section */}
+            {(pendingMaxTasks.length > 0 || inprogressMaxTasks.length > 0) && (
+              <div className="bg-[#161618]/50 px-4 py-3 border-b border-[#2a2a2e] space-y-3">
+                {pendingMaxTasks.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-medium text-[#fab005] mb-2">⏳ Awaiting Max</h3>
+                    {pendingMaxTasks.map(task => (
+                      <div key={task.id} className="bg-[#0d0d0f] rounded-lg p-3 mb-2">
+                        <p className="text-white text-sm">{task.text}</p>
+                        <div className="flex gap-2 mt-1">
+                          <span className={`text-xs px-2 py-0.5 rounded ${getPriorityColor(task.priority)}`}>{task.priority}</span>
+                          {task.dueDate && <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{formatDate(task.dueDate)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {inprogressMaxTasks.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-medium text-[#5c7cfa] mb-2">🔄 Working On</h3>
+                    {inprogressMaxTasks.map(task => (
+                      <div key={task.id} className="bg-[#0d0d0f] rounded-lg p-3">
+                        <p className="text-white text-sm">{task.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {messages.length === 0 ? (
                 <div className="text-center py-12 text-[#9a9a9e]">
                   <p className="text-lg mb-2">💬 Chat with Max</p>
-                  <p className="text-sm">Describe a task and I&apos;ll create it!</p>
+                  <p className="text-sm">Describe a task naturally!</p>
                   <p className="text-xs mt-4 opacity-50">Try: &quot;Follow up with bride tomorrow&quot;</p>
                 </div>
               ) : (
@@ -285,89 +363,39 @@ export default function TasksPage() {
               )}
               <div ref={messagesEndRef} />
             </div>
-            <form onSubmit={handleSubmit} className="flex gap-2">
+
+            {/* Input */}
+            <form onSubmit={handleSubmit} className="p-4 border-t border-[#2a2a2e] flex gap-2">
               <input
                 ref={chatInputRef}
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Describe a task..."
-                className="flex-1 bg-[#0d0d0f] border border-[#2a2a2e] rounded-lg px-4 py-3 text-white placeholder-[#9a9a9e] focus:outline-none focus:border-[#5c7cfa]"
+                placeholder="Type a message..."
+                className="flex-1 bg-[#161618] border border-[#2a2a2e] rounded-lg px-4 py-3 text-white placeholder-[#9a9a9e] focus:outline-none focus:border-[#5c7cfa]"
               />
-              <button type="submit" disabled={isProcessing || !input.trim()} className="bg-[#5c7cfa] hover:bg-[#4c6ef5] disabled:opacity-50 text-white px-6 rounded-lg">→</button>
+              <button
+                type="submit"
+                disabled={isProcessing || !input.trim()}
+                className="bg-[#5c7cfa] hover:bg-[#4c6ef5] disabled:opacity-50 text-white px-6 rounded-lg transition-colors"
+              >
+                →
+              </button>
             </form>
           </div>
-
-          {/* Max Tasks Sidebar */}
-          <div className="space-y-4">
-            {pendingMaxTasks.length > 0 && (
-              <div className="card p-4">
-                <h3 className="text-sm font-medium text-[#fab005] mb-3">⏳ Awaiting Max</h3>
-                {pendingMaxTasks.map(task => (
-                  <div key={task.id} className="bg-[#0d0d0f] rounded-lg p-3 mb-2">
-                    <p className="text-white text-sm">{task.text}</p>
-                    <div className="flex gap-2 mt-2">
-                      <span className={`text-xs px-2 py-0.5 rounded ${getPriorityColor(task.priority)}`}>{task.priority}</span>
-                      {task.dueDate && <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{formatDate(task.dueDate)}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {inprogressMaxTasks.length > 0 && (
-              <div className="card p-4">
-                <h3 className="text-sm font-medium text-[#5c7cfa] mb-3">🔄 Max Working On</h3>
-                {inprogressMaxTasks.map(task => (
-                  <div key={task.id} className="bg-[#0d0d0f] rounded-lg p-3 mb-2">
-                    <p className="text-white text-sm">{task.text}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* Kanban Board */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {COLUMNS.map(column => (
-            <div key={column.id} className="flex flex-col">
-              <div className={`bg-[#161618] rounded-t-lg px-4 py-3 border-t-2 ${column.color}`}>
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-white">{column.icon} {column.label}</span>
-                  <span className="text-xs bg-[#0d0d0f] px-2 py-0.5 rounded-full">{getColumnTasks(column.id).length}</span>
-                </div>
-              </div>
-              <div className="bg-[#161618]/50 rounded-b-lg p-2 flex-1 min-h-[300px] space-y-2">
-                {getColumnTasks(column.id).map(task => (
-                  <div key={task.id} className="card p-3">
-                    <div className="flex items-start justify-between mb-2">
-                      <p className="text-white flex-1">{task.text}</p>
-                      {task.assignee === 'max' && <span className="ml-2">🤖</span>}
-                    </div>
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{task.category}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded ${getPriorityColor(task.priority)}`}>{task.priority}</span>
-                      {task.dueDate && <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{formatDate(task.dueDate)}</span>}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      {task.assignee === 'max' && column.id === 'todo' && (
-                        <button onClick={() => moveTask(task.id, 'inprogress')} className="text-xs px-3 py-1 rounded bg-[#5c7cfa]/20 text-[#5c7cfa]">▶️ Start</button>
-                      )}
-                      {task.assignee === 'max' && column.id === 'inprogress' && (
-                        <button onClick={() => moveTask(task.id, 'done')} className="text-xs px-3 py-1 rounded bg-[#40c057]/20 text-[#40c057]">✅ Done</button>
-                      )}
-                      <button onClick={() => deleteTask(task.id)} className="p-1 text-[#9a9a9e] hover:text-[#fa5252]">×</button>
-                    </div>
-                  </div>
-                ))}
-                {getColumnTasks(column.id).length === 0 && (
-                  <div className="text-center py-8 text-[#9a9a9e] text-sm">No tasks</div>
-                )}
-              </div>
-            </div>
-          ))}
         </div>
       )}
+
+      {/* CSS for slide animation */}
+      <style>{`
+        @keyframes slide-in {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+      `}</style>
     </div>
   )
 }
