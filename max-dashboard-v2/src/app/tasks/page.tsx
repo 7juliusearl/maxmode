@@ -17,28 +17,39 @@ interface Task {
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
-  taskId?: string
-  task?: Task
+  type?: 'task_confirmation' | 'task_update' | 'info'
+  taskData?: Partial<Task>
 }
 
 const COLUMNS = [
-  { id: 'pending', label: 'Awaiting Max', color: 'border-[#fa5252]', icon: '⏳' },
-  { id: 'todo', label: 'To Do', color: 'border-[#fab005]', icon: '📋' },
-  { id: 'inprogress', label: 'In Progress', color: 'border-[#5c7cfa]', icon: '🔄' },
-  { id: 'done', label: 'Done', color: 'border-[#40c057]', icon: '✅' },
+  { id: 'pending', label: 'Awaiting Julius', color: 'border-[#FBBF24]', icon: '⏳' },
+  { id: 'todo', label: 'To Do', color: 'border-[#0D9488]', icon: '📋' },
+  { id: 'inprogress', label: 'In Progress', color: 'border-[#60A5FA]', icon: '🔄' },
+  { id: 'done', label: 'Done', color: 'border-[#22C55E]', icon: '✅' },
 ] as const
 
-const TELEGRAM_CHAT_ID = '8199918956'
+type TaskConfirmation = {
+  text: string
+  category: string
+  priority: 'high' | 'medium' | 'low'
+  assignee: 'julius' | 'max'
+  dueDate: string | null
+} | null
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { 
+      role: 'assistant', 
+      content: "Hi! I'm Max, your AI task manager. Just describe what you need to do, and I'll:\n\n1️⃣ Create a task from your description\n2️⃣ Ask clarifying questions if needed\n3️⃣ Add it to your task board\n\nWhat would you like to get done today?",
+      type: 'info'
+    }
+  ])
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
-  const [showChat, setShowChat] = useState(false)
+  const [pendingConfirmation, setPendingConfirmation] = useState<TaskConfirmation>(null)
   const [kvConnected, setKvConnected] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const chatInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchTasks()
@@ -72,29 +83,19 @@ export default function TasksPage() {
     window.dispatchEvent(new Event('maxmode-task-changed'))
   }
 
-  const sendTelegramNotification = async (task: Task) => {
-    const priorityEmoji = task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢'
-    const dueText = task.dueDate ? `\n📅 Due: ${task.dueDate}` : ''
-    const text = `🤖 *New Task for Max*\n\n"${task.text}"\n\n${priorityEmoji} Priority: ${task.priority}${dueText}\n📁 Category: ${task.category}\n\nClick ▶️ to start!`
-    
-    try {
-      await fetch('/api/telegram/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: TELEGRAM_CHAT_ID, text, tasks: [task] })
-      })
-    } catch (e) { console.error('Telegram error:', e) }
-  }
-
-  const parseTask = (text: string): Partial<Task> | null => {
+  // Parse task from natural language
+  const parseTask = (text: string): Partial<Task> => {
     const lower = text.toLowerCase()
+    
+    // Parse category
     let category = 'General'
     const categoryKeywords: Record<string, string[]> = {
-      'wedding': ['wedding', 'bride', 'groom', 'venue', 'vendor'],
-      'business': ['quote', 'invoice', 'client', 'lead', 'sale', 'proposal'],
-      'marketing': ['email', 'social', 'post', 'ad', 'campaign', 'content'],
-      'personal': ['personal', 'family', 'friend', 'birthday'],
+      'wedding': ['wedding', 'bride', 'groom', 'venue', 'vendor', 'marriage'],
+      'business': ['quote', 'invoice', 'client', 'lead', 'sale', 'proposal', 'contract', 'business'],
+      'marketing': ['email', 'social', 'post', 'ad', 'campaign', 'content', 'marketing'],
+      'personal': ['personal', 'family', 'friend', 'birthday', 'kids', 'wife'],
     }
+    
     for (const [cat, keywords] of Object.entries(categoryKeywords)) {
       if (keywords.some(k => lower.includes(k))) {
         category = cat.charAt(0).toUpperCase() + cat.slice(1)
@@ -102,15 +103,24 @@ export default function TasksPage() {
       }
     }
 
+    // Parse priority
     let priority: 'high' | 'medium' | 'low' = 'medium'
-    if (lower.includes('urgent') || lower.includes('asap') || lower.includes('important')) priority = 'high'
-    else if (lower.includes('whenever') || lower.includes('sometime')) priority = 'low'
+    if (lower.includes('urgent') || lower.includes('asap') || lower.includes('important') || lower.includes('!')) {
+      priority = 'high'
+    } else if (lower.includes('whenever') || lower.includes('sometime') || lower.includes('low priority')) {
+      priority = 'low'
+    }
 
+    // Parse assignee
     let assignee: 'julius' | 'max' = 'julius'
-    if (lower.includes('max') || lower.includes('you')) assignee = 'max'
+    if (lower.includes('max') || lower.includes('you')) {
+      assignee = 'max'
+    }
 
+    // Parse due date
     let dueDate: string | null = null
     const today = new Date()
+    
     if (lower.includes('tomorrow')) {
       const d = new Date(today)
       d.setDate(d.getDate() + 1)
@@ -123,13 +133,20 @@ export default function TasksPage() {
       dueDate = today.toISOString().split('T')[0]
     }
 
+    // Clean text
     let cleanText = lower
-      .replace(/tomorrow|today|next week|urgent|asap|important|whenever|sometime|max|you|julius|remember to |remind me to |i need to |i should |can you /g, '')
+      .replace(/tomorrow|today|next week|urgent|asap|important|whenever|sometime|max|you|julius|remember to |remind me to |i need to |i should |can you |task: /gi, '')
       .replace(/\s+/g, ' ')
       .trim()
     cleanText = cleanText.charAt(0).toUpperCase() + cleanText.slice(1)
 
-    return { text: cleanText || text, category, priority, assignee, dueDate }
+    return {
+      text: cleanText || text,
+      category,
+      priority,
+      assignee,
+      dueDate,
+    }
   }
 
   const createTask = (taskData: Partial<Task>) => {
@@ -143,10 +160,32 @@ export default function TasksPage() {
       dueDate: taskData.dueDate || null,
       createdAt: new Date().toISOString(),
     }
+    
     const newTasks = [task, ...tasks]
     saveTasks(newTasks)
-    if (task.assignee === 'max') sendTelegramNotification(task)
     return task
+  }
+
+  const formatTaskConfirmation = (data: Partial<Task>) => {
+    const parts = [`📝 **Task Summary**`]
+    parts.push(`"${data.text}"`)
+    
+    if (data.priority === 'high') parts.push('🔴 Priority: High')
+    else if (data.priority === 'low') parts.push('🟢 Priority: Low')
+    else parts.push('🟡 Priority: Medium')
+    
+    if (data.dueDate) {
+      const date = new Date(data.dueDate)
+      const today = new Date()
+      if (date.toDateString() === today.toDateString()) parts.push('📅 Due: Today')
+      else if (date.toDateString() === new Date(today.setDate(today.getDate() + 1)).toDateString()) parts.push('📅 Due: Tomorrow')
+      else parts.push(`📅 Due: ${date.toLocaleDateString()}`)
+    }
+    
+    parts.push(`📁 Category: ${data.category}`)
+    parts.push(`👤 Assignee: ${data.assignee === 'max' ? '🤖 Max' : '👤 Julius'}`)
+    
+    return parts.join('\n')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -160,34 +199,75 @@ export default function TasksPage() {
 
     await new Promise(resolve => setTimeout(resolve, 600))
 
-    const pendingMaxTask = tasks.find(t => t.assignee === 'max' && t.status === 'pending')
     const lower = userMessage.toLowerCase()
 
-    if (pendingMaxTask) {
-      if (lower.includes('go') || lower.includes('yes') || lower.includes('proceed') || lower.includes('confirmed')) {
-        saveTasks(tasks.map(t => t.id === pendingMaxTask.id ? { ...t, status: 'todo' as const } : t))
-        setMessages(prev => [...prev, { role: 'assistant', content: '👍 Got it! Starting work now.', taskId: pendingMaxTask.id }])
-      } else if (lower.includes('cancel') || lower.includes('nevermind') || lower.includes('dont') || lower.includes('stop')) {
-        saveTasks(tasks.filter(t => t.id !== pendingMaxTask.id))
-        setMessages(prev => [...prev, { role: 'assistant', content: 'No problem! Task cancelled.' }])
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: 'Say "go" to proceed or "cancel" to skip.', taskId: pendingMaxTask.id }])
-      }
-    } else {
-      const taskData = parseTask(userMessage)
-      if (taskData && taskData.text) {
-        const newTask = createTask(taskData)
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: taskData.assignee === 'max' 
-            ? `📋 Task sent to your Telegram!`
-            : `Created: "${newTask.text}"`,
-          task: newTask 
+    // Check if we're waiting for confirmation
+    if (pendingConfirmation) {
+      if (lower.includes('yes') || lower.includes('yeah') || lower.includes('yep') || lower.includes('sure') || lower.includes('go') || lower.includes('do it')) {
+        // User confirmed - create the task
+        const newTask = createTask(pendingConfirmation)
+        setPendingConfirmation(null)
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `✅ Task created successfully!\n\n"${newTask.text}" has been added to your board.\n\nAnything else I can help with?`,
+          type: 'task_update'
+        }])
+      } else if (lower.includes('no') || lower.includes('nope') || lower.includes('cancel') || lower.includes('nevermind')) {
+        setPendingConfirmation(null)
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: "No problem! Task cancelled.\n\nWhat else would you like to do?",
+          type: 'info'
+        }])
+      } else if (lower.includes('change') || lower.includes('modify') || lower.includes('edit')) {
+        // User wants to modify the task
+        const updatedData = { ...pendingConfirmation }
+        
+        if (lower.includes('high priority') || lower.includes('urgent')) updatedData.priority = 'high'
+        else if (lower.includes('low priority')) updatedData.priority = 'low'
+        else if (lower.includes('medium priority')) updatedData.priority = 'medium'
+        
+        if (lower.includes('tomorrow')) {
+          const d = new Date()
+          d.setDate(d.getDate() + 1)
+          updatedData.dueDate = d.toISOString().split('T')[0]
+        }
+        
+        setPendingConfirmation(updatedData)
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Updated! Here's the new task:\n\n${formatTaskConfirmation(updatedData)}\n\nSay "yes" to confirm or "change" to modify.`,
+          type: 'task_confirmation',
+          taskData: updatedData
         }])
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: 'Try: "Follow up with bride tomorrow"' }])
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: "Please say \"yes\" to confirm or \"no\" to cancel.",
+          type: 'info'
+        }])
+      }
+    } else {
+      // New task request
+      const taskData = parseTask(userMessage)
+      
+      if (taskData.text && taskData.text.length > 2) {
+        setPendingConfirmation(taskData as TaskConfirmation)
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `I've analyzed your request. Here's what I understood:\n\n${formatTaskConfirmation(taskData)}\n\nDoes this look correct? Say "yes" to create or "no" to cancel.`,
+          type: 'task_confirmation',
+          taskData: taskData
+        }])
+      } else {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: "I'm not sure what you mean. Could you describe the task more clearly?\n\nTry: \"Follow up with the bride tomorrow\" or \"Send quote to client urgent\"",
+          type: 'info'
+        }])
       }
     }
+
     setIsProcessing(false)
   }
 
@@ -195,12 +275,12 @@ export default function TasksPage() {
   const moveTask = (id: string, newStatus: Task['status']) => saveTasks(tasks.map(t => t.id === id ? { ...t, status: newStatus } : t))
   const deleteTask = (id: string) => saveTasks(tasks.filter(t => t.id !== id))
 
-  const getPriorityColor = (p: string) => {
+  const getPriorityBadge = (p: string) => {
     switch (p) {
-      case 'high': return 'bg-[#fa5252]/20 text-[#fa5252]'
-      case 'medium': return 'bg-[#fab005]/20 text-[#fab005]'
-      case 'low': return 'bg-[#40c057]/20 text-[#40c057]'
-      default: return 'bg-[#2a2a2e] text-[#9a9a9e]'
+      case 'high': return '🔴 High'
+      case 'medium': return '🟡 Medium'
+      case 'low': return '🟢 Low'
+      default: return p
     }
   }
 
@@ -213,150 +293,84 @@ export default function TasksPage() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
-  const pendingMaxTasks = tasks.filter(t => t.assignee === 'max' && t.status === 'pending')
-  const inprogressMaxTasks = tasks.filter(t => t.assignee === 'max' && t.status === 'inprogress')
-
   return (
     <div className="p-4 md:p-6 min-h-screen">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">Tasks</h1>
-        <p className="text-[#9a9a9e]">{tasks.length} total • {kvConnected ? '☁️ Synced' : '📱 Local'}</p>
+        <h1 className="text-3xl font-bold text-white mb-2">Tasks</h1>
+        <p className="text-[var(--color-text-muted)]">
+          {tasks.length} tasks • {kvConnected ? '☁️ Synced' : '📱 Local'}
+        </p>
       </div>
 
-      {/* Stats Bar */}
-      <div className="grid grid-cols-4 gap-2 mb-6">
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-3 mb-8">
         {COLUMNS.map(col => (
-          <div key={col.id} className={`bg-[#161618] rounded-lg px-3 py-2 border-t-2 ${col.color}`}>
-            <p className="text-xl font-bold text-white">{getColumnTasks(col.id).length}</p>
-            <p className="text-xs text-[#9a9a9e] truncate">{col.icon} {col.label}</p>
+          <div key={col.id} className={`bg-[var(--color-surface)] rounded-xl px-4 py-3 border-t-2 ${col.color}`}>
+            <p className="text-2xl font-bold text-white">{getColumnTasks(col.id).length}</p>
+            <p className="text-xs text-[var(--color-text-muted)]">{col.icon} {col.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Kanban Board */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {COLUMNS.map(column => (
-          <div key={column.id} className="flex flex-col">
-            <div className={`bg-[#161618] rounded-t-lg px-4 py-3 border-t-2 ${column.color}`}>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-white">{column.icon} {column.label}</span>
-                <span className="text-xs bg-[#0d0d0f] px-2 py-0.5 rounded-full">{getColumnTasks(column.id).length}</span>
-              </div>
-            </div>
-            <div className="bg-[#161618]/50 rounded-b-lg p-2 flex-1 min-h-[300px] space-y-2">
-              {getColumnTasks(column.id).map(task => (
-                <div key={task.id} className="card p-3">
-                  <div className="flex items-start justify-between mb-2">
-                    <p className="text-white flex-1">{task.text}</p>
-                    {task.assignee === 'max' && <span className="ml-2">🤖</span>}
-                  </div>
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{task.category}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded ${getPriorityColor(task.priority)}`}>{task.priority}</span>
-                    {task.dueDate && <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{formatDate(task.dueDate)}</span>}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    {task.assignee === 'max' && column.id === 'todo' && (
-                      <button onClick={() => moveTask(task.id, 'inprogress')} className="text-xs px-3 py-1 rounded bg-[#5c7cfa]/20 text-[#5c7cfa]">▶️ Start</button>
-                    )}
-                    {task.assignee === 'max' && column.id === 'inprogress' && (
-                      <button onClick={() => moveTask(task.id, 'done')} className="text-xs px-3 py-1 rounded bg-[#40c057]/20 text-[#40c057]">✅ Done</button>
-                    )}
-                    <button onClick={() => deleteTask(task.id)} className="p-1 text-[#9a9a9e] hover:text-[#fa5252]">×</button>
-                  </div>
-                </div>
-              ))}
-              {getColumnTasks(column.id).length === 0 && (
-                <div className="text-center py-8 text-[#9a9a9e] text-sm">No tasks</div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Floating Chat Button */}
-      <button
-        onClick={() => { setShowChat(true); setTimeout(() => chatInputRef.current?.focus(), 100) }}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-[#5c7cfa] hover:bg-[#4c6ef5] rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 z-50"
-      >
-        💬
-      </button>
-
-      {/* Chat Overlay */}
-      {showChat && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
-          <div className="bg-[#0d0d0f] w-full max-w-md h-full shadow-2xl flex flex-col animate-slide-in">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Chat Panel */}
+        <div className="lg:col-span-2">
+          <div className="card flex flex-col h-[600px]">
             {/* Chat Header */}
-            <div className="bg-[#161618] px-4 py-3 border-b border-[#2a2a2e] flex items-center justify-between">
-              <div>
-                <h2 className="font-bold text-white">💬 Chat with Max</h2>
-                <p className="text-xs text-[#9a9a9e]">Describe a task or ask questions</p>
-              </div>
-              <button
-                onClick={() => setShowChat(false)}
-                className="p-2 hover:bg-[#2a2a2e] rounded-lg transition-colors"
-              >
-                ✕
-              </button>
+            <div className="bg-[var(--color-surface)] px-5 py-4 border-b border-[var(--color-border-subtle)] rounded-t-xl">
+              <h2 className="font-semibold text-white flex items-center gap-2">
+                <span className="text-xl">💬</span>
+                Chat with Max
+              </h2>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                Describe tasks naturally, I'll handle the rest
+              </p>
             </div>
-
-            {/* Max Tasks Section */}
-            {(pendingMaxTasks.length > 0 || inprogressMaxTasks.length > 0) && (
-              <div className="bg-[#161618]/50 px-4 py-3 border-b border-[#2a2a2e] space-y-3">
-                {pendingMaxTasks.length > 0 && (
-                  <div>
-                    <h3 className="text-xs font-medium text-[#fab005] mb-2">⏳ Awaiting Max</h3>
-                    {pendingMaxTasks.map(task => (
-                      <div key={task.id} className="bg-[#0d0d0f] rounded-lg p-3 mb-2">
-                        <p className="text-white text-sm">{task.text}</p>
-                        <div className="flex gap-2 mt-1">
-                          <span className={`text-xs px-2 py-0.5 rounded ${getPriorityColor(task.priority)}`}>{task.priority}</span>
-                          {task.dueDate && <span className="text-xs px-2 py-0.5 rounded bg-[#2a2a2e]">{formatDate(task.dueDate)}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {inprogressMaxTasks.length > 0 && (
-                  <div>
-                    <h3 className="text-xs font-medium text-[#5c7cfa] mb-2">🔄 Working On</h3>
-                    {inprogressMaxTasks.map(task => (
-                      <div key={task.id} className="bg-[#0d0d0f] rounded-lg p-3">
-                        <p className="text-white text-sm">{task.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {messages.length === 0 ? (
-                <div className="text-center py-12 text-[#9a9a9e]">
-                  <p className="text-lg mb-2">💬 Chat with Max</p>
-                  <p className="text-sm">Describe a task naturally!</p>
-                  <p className="text-xs mt-4 opacity-50">Try: &quot;Follow up with bride tomorrow&quot;</p>
+                <div className="text-center py-12 text-[var(--color-text-muted)]">
+                  <p className="text-lg">👋 Welcome!</p>
+                  <p className="text-sm mt-2">Describe a task and I'll create it for you.</p>
                 </div>
               ) : (
                 messages.map((msg, i) => (
                   <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-lg p-3 ${
-                      msg.role === 'user' ? 'bg-[#5c7cfa] text-white' : 'bg-[#2a2a2e] text-white'
+                    <div className={`max-w-[85%] rounded-2xl px-5 py-3 ${
+                      msg.role === 'user' 
+                        ? 'bg-[var(--color-primary)] text-white rounded-tr-sm' 
+                        : msg.type === 'task_confirmation'
+                        ? 'bg-[var(--color-surface)] border border-[var(--color-primary)] text-white rounded-tl-sm'
+                        : 'bg-[var(--color-surface)] text-white rounded-tl-sm'
                     }`}>
-                      <p className="text-sm">{msg.content}</p>
+                      {msg.type === 'task_confirmation' && (
+                        <div className="mb-3 pb-3 border-b border-[var(--color-border-subtle)]">
+                          <p className="text-xs text-[var(--color-text-muted)] mb-2">📝 Task to create:</p>
+                          {msg.taskData && (
+                            <div className="space-y-1 text-sm">
+                              <p className="font-medium">{msg.taskData.text}</p>
+                              <p className="text-xs opacity-80">
+                                {msg.taskData.priority && getPriorityBadge(msg.taskData.priority)} • {msg.taskData.category}
+                                {msg.taskData.dueDate && ` • ${formatDate(msg.taskData.dueDate)}`}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <p className="whitespace-pre-line text-sm">{msg.content}</p>
                     </div>
                   </div>
                 ))
               )}
               {isProcessing && (
                 <div className="flex justify-start">
-                  <div className="bg-[#2a2a2e] rounded-lg p-3">
+                  <div className="bg-[var(--color-surface)] rounded-2xl rounded-tl-sm px-5 py-3">
                     <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-[#9a9a9e] rounded-full animate-bounce"/>
-                      <span className="w-2 h-2 bg-[#9a9a9e] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}/>
-                      <span className="w-2 h-2 bg-[#9a9a9e] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}/>
+                      <span className="w-2 h-2 bg-[var(--color-text-muted)] rounded-full animate-bounce"/>
+                      <span className="w-2 h-2 bg-[var(--color-text-muted)] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}/>
+                      <span className="w-2 h-2 bg-[var(--color-text-muted)] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}/>
                     </div>
                   </div>
                 </div>
@@ -365,37 +379,91 @@ export default function TasksPage() {
             </div>
 
             {/* Input */}
-            <form onSubmit={handleSubmit} className="p-4 border-t border-[#2a2a2e] flex gap-2">
+            <form onSubmit={handleSubmit} className="p-4 border-t border-[var(--color-border-subtle)] flex gap-3">
               <input
-                ref={chatInputRef}
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 bg-[#161618] border border-[#2a2a2e] rounded-lg px-4 py-3 text-white placeholder-[#9a9a9e] focus:outline-none focus:border-[#5c7cfa]"
+                placeholder={pendingConfirmation ? '"yes" to confirm, "no" to cancel...' : 'Describe a task...'}
+                className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border-subtle)] rounded-xl px-4 py-3 text-white placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)]"
               />
               <button
                 type="submit"
                 disabled={isProcessing || !input.trim()}
-                className="bg-[#5c7cfa] hover:bg-[#4c6ef5] disabled:opacity-50 text-white px-6 rounded-lg transition-colors"
+                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] disabled:opacity-50 text-white px-6 py-3 rounded-xl font-medium transition-colors"
               >
                 →
               </button>
             </form>
           </div>
         </div>
-      )}
 
-      {/* CSS for slide animation */}
-      <style>{`
-        @keyframes slide-in {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-        .animate-slide-in {
-          animation: slide-in 0.3s ease-out;
-        }
-      `}</style>
+        {/* Task Board */}
+        <div className="lg:col-span-1">
+          <div className="card h-[600px] flex flex-col">
+            <div className="bg-[var(--color-surface)] px-5 py-4 border-b border-[var(--color-border-subtle)] rounded-t-xl">
+              <h2 className="font-semibold text-white flex items-center gap-2">
+                <span className="text-xl">📋</span>
+                Task Board
+              </h2>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {getColumnTasks('todo').length === 0 && getColumnTasks('inprogress').length === 0 && getColumnTasks('done').length === 0 ? (
+                <div className="text-center py-8 text-[var(--color-text-muted)]">
+                  <p className="text-sm">No tasks yet</p>
+                  <p className="text-xs mt-1">Create one in the chat!</p>
+                </div>
+              ) : (
+                <>
+                  {/* To Do */}
+                  {getColumnTasks('todo').map(task => (
+                    <div key={task.id} className="bg-[var(--color-bg)] rounded-lg p-4 border border-[var(--color-border-subtle)]">
+                      <p className="text-white font-medium mb-2">{task.text}</p>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className={`px-2 py-0.5 rounded ${
+                          task.priority === 'high' ? 'priority-high' :
+                          task.priority === 'low' ? 'priority-low' : 'priority-medium'
+                        }`}>
+                          {task.priority}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-[var(--color-surface)] text-[var(--color-text-muted)]">
+                          {task.category}
+                        </span>
+                        {task.dueDate && (
+                          <span className="px-2 py-0.5 rounded bg-[var(--color-surface)] text-[var(--color-text-muted)]">
+                            {formatDate(task.dueDate)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* In Progress */}
+                  {getColumnTasks('inprogress').map(task => (
+                    <div key={task.id} className="bg-[var(--color-bg)] rounded-lg p-4 border border-[#60A5FA]">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[#60A5FA]">🔄</span>
+                        <p className="text-white font-medium">{task.text}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="px-2 py-0.5 rounded bg-[#60A5FA]/20 text-[#60A5FA]">In Progress</span>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Done */}
+                  {getColumnTasks('done').slice(0, 5).map(task => (
+                    <div key={task.id} className="bg-[var(--color-bg)] rounded-lg p-4 border border-[#22C55E]/30 opacity-75">
+                      <p className="text-white line-through decoration-[#22C55E]">{task.text}</p>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
