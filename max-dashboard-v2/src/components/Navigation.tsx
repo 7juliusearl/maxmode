@@ -46,7 +46,7 @@ export function Navigation() {
 
   return (
     <>
-      {/* Desktop Navigation */}
+      {/* Desktop navigation */}
       <nav className="hidden md:flex items-center gap-1 p-2">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href
@@ -56,8 +56,8 @@ export function Navigation() {
               href={item.href}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
                 isActive
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-surface)]'
+                  ? 'bg-[#0D9488] text-white'
+                  : 'text-[#9CA3AF] hover:text-white hover:bg-[#0D1117]'
               }`}
             >
               {item.icon}
@@ -70,7 +70,7 @@ export function Navigation() {
       {/* Mobile Menu Button */}
       <button
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="md:hidden p-2 text-[var(--color-text-muted)] hover:text-white transition-colors"
+        className="md:hidden p-2 text-[#9CA3AF] hover:text-white transition-colors"
       >
         {isMobileMenuOpen ? (
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,7 +83,7 @@ export function Navigation() {
         )}
       </button>
 
-      {/* Mobile Menu Overlay */}
+      {/* Mobile Menu */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 md:hidden" onClick={() => setIsMobileMenuOpen(false)}>
           <div 
@@ -128,9 +128,9 @@ export function Navigation() {
 
 export function PageLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[var(--color-bg)]">
+    <div className="min-h-screen bg-[#000000]">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[var(--color-bg)]/80 backdrop-blur-lg border-b border-[var(--color-border-subtle)]">
+      <header className="sticky top-0 z-40 bg-[#000000]/80 backdrop-blur-lg border-b border-[#30363D]">
         <div className="max-w-6xl mx-auto px-4 md:px-6">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
