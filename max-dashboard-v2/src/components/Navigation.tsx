@@ -85,8 +85,8 @@ export function Navigation() {
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 md:hidden" onClick={() => setIsMobileMenuOpen(false)}>
-          <div className="absolute top-0 right-0 w-64 bg-[var(--color-bg)] h-full shadow-xl p-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 z-50 md:hidden" onClick={() => setIsMobileMenuOpen(false)}>
+          <div className="absolute top-0 right-0 w-72 h-full bg-[#0D1117] border-l border-[var(--color-border-subtle)] shadow-2xl p-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-white">Menu</h2>
               <button
@@ -96,7 +96,7 @@ export function Navigation() {
                 ✕
               </button>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 mt-8">
               {NAV_ITEMS.map((item) => {
                 const isActive = pathname === item.href
                 return (
@@ -104,7 +104,7 @@ export function Navigation() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${
+                    className={`flex items-center gap-3 px-4 py-4 rounded-xl font-medium transition-all ${
                       isActive
                         ? 'bg-[var(--color-primary)] text-white'
                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-surface)]'
